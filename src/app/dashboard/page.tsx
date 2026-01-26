@@ -42,19 +42,19 @@ export default function DashboardPage() {
       console.log('🔄 Carregando dados do dashboard...')
       
       if (isAdmin) {
+        console.log('👨‍💼 Carregando dados de admin...')
         await carregarDadosAdmin()
       } else {
+        console.log('👤 Carregando dados de usuário...')
         await carregarDadosUsuario()
       }
       
       console.log('✅ Dados do dashboard carregados com sucesso')
     } catch (error) {
       console.error('❌ Erro ao carregar dados do dashboard:', error)
-      // Tentar novamente após 2 segundos
-      setTimeout(() => {
-        console.log('🔄 Tentando carregar dados novamente...')
-        carregarDados()
-      }, 2000)
+      // Em caso de erro, definir dados padrão
+      setEstatisticas({ totalRespostas: 0, acertos: 0, percentualAcertos: 0, porMateria: {} })
+      setMaterias([])
     } finally {
       setLoading(false)
     }
@@ -62,9 +62,17 @@ export default function DashboardPage() {
 
   const carregarDadosUsuario = async () => {
     try {
+      console.log('📊 Iniciando carregamento de dados do usuário...')
+      
       const [statsData, materiasData] = await Promise.all([
-        getEstatisticasEstudo(),
-        getMateriasComEstatisticas()
+        getEstatisticasEstudo().catch(err => {
+          console.error('Erro ao carregar estatísticas:', err)
+          return { totalRespostas: 0, acertos: 0, percentualAcertos: 0, porMateria: {} }
+        }),
+        getMateriasComEstatisticas().catch(err => {
+          console.error('Erro ao carregar matérias:', err)
+          return []
+        })
       ])
       
       console.log('📊 Estatísticas carregadas:', statsData)
@@ -72,9 +80,13 @@ export default function DashboardPage() {
       
       setEstatisticas(statsData)
       setMaterias(materiasData)
+      
+      console.log('✅ Dados do usuário carregados com sucesso')
     } catch (error) {
-      console.error('❌ Erro ao carregar dados do usuário:', error)
-      throw error
+      console.error('❌ Erro crítico ao carregar dados do usuário:', error)
+      // Definir dados padrão em caso de erro
+      setEstatisticas({ totalRespostas: 0, acertos: 0, percentualAcertos: 0, porMateria: {} })
+      setMaterias([])
     }
   }
 

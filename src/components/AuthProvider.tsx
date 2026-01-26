@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
@@ -22,6 +22,15 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {}
 })
 
+// Debounce function para evitar múltiplas chamadas
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
+  let timeout: NodeJS.Timeout
+  return ((...args: any[]) => {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func(...args), wait)
+  }) as T
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -30,14 +39,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [initialized, setInitialized] = useState(false)
 
+  // Função para atualizar estado do usuário
+  const updateUserState = useCallback((session: Session | null) => {
+    setSession(session)
+    setUser(session?.user ?? null)
+
+    if (session?.user) {
+      const isUserAdmin = session.user.email === 'savio.ads02@gmail.com'
+      setUserRole(isUserAdmin ? 'admin' : 'user')
+      setIsAdmin(isUserAdmin)
+    } else {
+      setUserRole(null)
+      setIsAdmin(false)
+    }
+    
+    setLoading(false)
+  }, [])
+
+  // Debounced version para evitar múltiplas atualizações
+  const debouncedUpdateUserState = useCallback(
+    debounce(updateUserState, 500), // 500ms de delay
+    [updateUserState]
+  )
+
   useEffect(() => {
-    if (initialized) return // EVITAR MÚLTIPLAS INICIALIZAÇÕES
+    if (initialized) return
     
     let mounted = true
     
     const initializeAuth = async () => {
       try {
-        console.log('🔐 Inicializando autenticação...')
+        console.log('🔐 Inicializando autenticação (dispositivo único)...')
         
         const { data: { session }, error } = await supabase.auth.getSession()
         
@@ -47,18 +79,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('❌ Erro ao buscar sessão:', error)
         } else {
           console.log('👤 Sessão encontrada:', !!session)
-          setSession(session)
-          setUser(session?.user ?? null)
-          
-          if (session?.user) {
-            // Definir role baseado no email (simples)
-            const isUserAdmin = session.user.email === 'savio.ads02@gmail.com'
-            setUserRole(isUserAdmin ? 'admin' : 'user')
-            setIsAdmin(isUserAdmin)
-          }
+          updateUserState(session)
         }
         
-        setLoading(false)
         setInitialized(true)
         console.log('✅ Autenticação inicializada')
         
@@ -73,26 +96,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     initializeAuth()
 
-    // Listener de mudanças (SEM async para evitar loops)
+    // Listener com debounce para múltiplos dispositivos
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!mounted) return
         
-        console.log('🔄 Auth state changed:', event)
-        
-        setSession(session)
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          const isUserAdmin = session.user.email === 'savio.ads02@gmail.com'
-          setUserRole(isUserAdmin ? 'admin' : 'user')
-          setIsAdmin(isUserAdmin)
-        } else {
-          setUserRole(null)
-          setIsAdmin(false)
-        }
-        
-        setLoading(false)
+        console.log('🔄 Auth state changed (debounced):', event)
+        debouncedUpdateUserState(session)
       }
     )
 
@@ -100,15 +110,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [initialized]) // DEPENDÊNCIA CRUCIAL
+  }, [initialized, updateUserState, debouncedUpdateUserState])
 
   const signOut = async () => {
     try {
       await supabase.auth.signOut()
-      setUser(null)
-      setSession(null)
-      setUserRole(null)
-      setIsAdmin(false)
+      updateUserState(null)
     } catch (error) {
       console.error('Erro ao fazer logout:', error)
     }

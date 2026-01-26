@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase, supabaseQuery } from './supabase'
 
 export interface QuestaoEstudo {
   id: string
@@ -127,15 +127,19 @@ export async function getEstatisticasEstudo() {
       }
     }
 
-    const { data, error } = await supabase
-      .from('historico_estudos')
-      .select(`
-        acertou,
-        questoes!inner(
-          materias!inner(nome)
-        )
-      `)
-      .eq('usuario_id', user.id)
+    const result = await supabaseQuery(async () => {
+      return await supabase
+        .from('historico_estudos')
+        .select(`
+          acertou,
+          questoes!inner(
+            materias!inner(nome)
+          )
+        `)
+        .eq('usuario_id', user.id)
+    })
+
+    const { data, error } = result
 
     if (error) {
       console.error('Erro ao buscar estatísticas:', error)

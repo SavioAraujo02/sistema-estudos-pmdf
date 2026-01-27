@@ -143,25 +143,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* BOTÃO PARA TESTAR REDIRECIONAMENTO */}
-        <div className="text-center space-y-2">
-          <button
-            onClick={() => window.location.href = '/teste'}
-            className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            🧪 TESTAR REDIRECIONAMENTO
-          </button>
-          
-          <button
-            onClick={() => {
-              console.log('Tentando ir para dashboard...')
-              window.location.href = '/dashboard'
-            }}
-            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            🚀 FORÇAR DASHBOARD
-          </button>
-        </div>
       </div>
     </div>
   )

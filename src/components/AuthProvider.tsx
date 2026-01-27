@@ -4,13 +4,21 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
+interface UsuarioStatus {
+  status: 'pendente' | 'ativo' | 'expirado' | 'bloqueado'
+  data_expiracao?: string
+  observacoes?: string
+}
+
 interface AuthContextType {
   user: User | null
   session: Session | null
   loading: boolean
   isAdmin: boolean
   userRole: 'admin' | 'user' | null
+  userStatus: UsuarioStatus | null
   signOut: () => Promise<void>
+  verificarStatus: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,7 +27,9 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   userRole: null,
-  signOut: async () => {}
+  userStatus: null,
+  signOut: async () => {},
+  verificarStatus: async () => {}
 })
 
 // Debounce function para evitar múltiplas chamadas
@@ -37,24 +47,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [userStatus, setUserStatus] = useState<UsuarioStatus | null>(null)
   const [initialized, setInitialized] = useState(false)
 
+  // Função para verificar status do usuário no banco
+  const verificarStatusUsuario = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('status, data_expiracao, observacoes, role')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Erro ao verificar status:', error)
+        return null
+      }
+
+      // Verificar se expirou
+      let status = data.status
+      if (status === 'ativo' && data.data_expiracao) {
+        const agora = new Date()
+        const expiracao = new Date(data.data_expiracao)
+        if (agora > expiracao) {
+          status = 'expirado'
+          // Atualizar no banco
+          await supabase
+            .from('usuarios')
+            .update({ status: 'expirado' })
+            .eq('id', userId)
+        }
+      }
+
+      const statusInfo: UsuarioStatus = {
+        status,
+        data_expiracao: data.data_expiracao,
+        observacoes: data.observacoes
+      }
+
+      setUserStatus(statusInfo)
+      setUserRole(data.role)
+      setIsAdmin(data.role === 'admin')
+
+      return statusInfo
+    } catch (error) {
+      console.error('Erro ao verificar status:', error)
+      return null
+    }
+  }, [])
+
   // Função para atualizar estado do usuário
-  const updateUserState = useCallback((session: Session | null) => {
+  const updateUserState = useCallback(async (session: Session | null) => {
     setSession(session)
     setUser(session?.user ?? null)
 
     if (session?.user) {
-      const isUserAdmin = session.user.email === 'savio.ads02@gmail.com'
-      setUserRole(isUserAdmin ? 'admin' : 'user')
-      setIsAdmin(isUserAdmin)
+      await verificarStatusUsuario(session.user.id)
     } else {
       setUserRole(null)
       setIsAdmin(false)
+      setUserStatus(null)
     }
     
     setLoading(false)
-  }, [])
+  }, [verificarStatusUsuario])
+
+  // Função para verificar status manualmente
+  const verificarStatus = useCallback(async () => {
+    if (user) {
+      await verificarStatusUsuario(user.id)
+    }
+  }, [user, verificarStatusUsuario])
 
   // Debounced version para evitar múltiplas atualizações
   const debouncedUpdateUserState = useCallback(
@@ -79,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('❌ Erro ao buscar sessão:', error)
         } else {
           console.log('👤 Sessão encontrada:', !!session)
-          updateUserState(session)
+          await updateUserState(session)
         }
         
         setInitialized(true)
@@ -115,14 +178,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await supabase.auth.signOut()
-      updateUserState(null)
+      await updateUserState(null)
     } catch (error) {
       console.error('Erro ao fazer logout:', error)
     }
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, isAdmin, userRole, signOut }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session, 
+      loading, 
+      isAdmin, 
+      userRole, 
+      userStatus, 
+      signOut, 
+      verificarStatus 
+    }}>
       {children}
     </AuthContext.Provider>
   )

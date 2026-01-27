@@ -3,6 +3,7 @@
 import { useAuth } from './AuthProvider'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { StatusGuard } from './StatusGuard'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -13,11 +14,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter()
   const [timeoutReached, setTimeoutReached] = useState(false)
 
-  // Timeout de segurança - se demorar mais de 10 segundos, assumir erro
+  // Timeout de segurança
   useEffect(() => {
     const timeout = setTimeout(() => {
       setTimeoutReached(true)
-      console.warn('⚠️ Timeout na autenticação - forçando redirect')
+      console.warn('⚠️ Timeout na autenticação')
     }, 10000)
 
     return () => clearTimeout(timeout)
@@ -30,7 +31,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
   }, [user, loading, router])
 
-  // Se demorou muito, mostrar erro
+  // Se demorou muito
   if (timeoutReached && loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -75,5 +76,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     )
   }
 
-  return <>{children}</>
+  // Usuário logado - verificar status
+  return (
+    <StatusGuard>
+      {children}
+    </StatusGuard>
+  )
 }

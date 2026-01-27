@@ -50,6 +50,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userStatus, setUserStatus] = useState<UsuarioStatus | null>(null)
   const [initialized, setInitialized] = useState(false)
 
+  
+  // Função para criar usuário automaticamente
+  const criarUsuarioAutomaticamente = useCallback(async (userId: string) => {
+    try {
+      // Buscar dados do usuário do auth
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) return null
+
+      // Verificar se é admin
+      const isUserAdmin = user.email === 'savio.ads02@gmail.com'
+
+      const { data, error } = await supabase
+        .from('usuarios')
+        .insert({
+          id: userId,
+          email: user.email!,
+          nome: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
+          foto: user.user_metadata?.avatar_url,
+          role: isUserAdmin ? 'admin' : 'user',
+          status: isUserAdmin ? 'ativo' : 'pendente'
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Erro ao criar usuário:', error)
+        return null
+      }
+
+      console.log('✅ Usuário criado automaticamente:', data)
+
+      const statusInfo: UsuarioStatus = {
+        status: data.status,
+        data_expiracao: data.data_expiracao,
+        observacoes: data.observacoes
+      }
+
+      setUserStatus(statusInfo)
+      setUserRole(data.role)
+      setIsAdmin(data.role === 'admin')
+
+      return statusInfo
+    } catch (error) {
+      console.error('Erro ao criar usuário automaticamente:', error)
+      return null
+    }
+  }, [])
+    
   // Função para verificar status do usuário no banco
   const verificarStatusUsuario = useCallback(async (userId: string) => {
     try {
@@ -60,6 +109,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single()
 
       if (error) {
+        // Se usuário não existe, criar automaticamente
+        if (error.code === 'PGRST116') {
+          console.log('👤 Usuário não encontrado, criando automaticamente...')
+          return await criarUsuarioAutomaticamente(userId)
+        }
+        
         console.error('Erro ao verificar status:', error)
         return null
       }

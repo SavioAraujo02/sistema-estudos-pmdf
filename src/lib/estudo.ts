@@ -189,3 +189,56 @@ export async function getEstatisticasEstudo() {
     }
   }
 }
+
+
+// ==================== FUNÇÃO PARA ZERAR ESTATÍSTICAS ====================
+
+export async function zerarEstatisticasUsuario() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      console.error('Usuário não autenticado')
+      return false
+    }
+
+    // Deletar histórico de estudos
+    const { error: historicoError } = await supabase
+      .from('historico_estudos')
+      .delete()
+      .eq('usuario_id', user.id)
+
+    if (historicoError) {
+      console.error('Erro ao deletar histórico:', historicoError)
+      return false
+    }
+
+    // Deletar tempos de resposta
+    const { error: tempoError } = await supabase
+      .from('tempo_respostas')
+      .delete()
+      .eq('usuario_id', user.id)
+
+    if (tempoError) {
+      console.error('Erro ao deletar tempos:', tempoError)
+      return false
+    }
+
+    // Deletar alternativas eliminadas
+    const { error: eliminadasError } = await supabase
+      .from('alternativas_eliminadas')
+      .delete()
+      .eq('usuario_id', user.id)
+
+    if (eliminadasError) {
+      console.error('Erro ao deletar alternativas eliminadas:', eliminadasError)
+      return false
+    }
+
+    console.log('✅ Estatísticas zeradas com sucesso!')
+    return true
+  } catch (error) {
+    console.error('Erro inesperado ao zerar estatísticas:', error)
+    return false
+  }
+}

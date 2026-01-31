@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/components/AuthProvider'
-import { getEstatisticasEstudo } from '@/lib/estudo'
+import { getEstatisticasEstudo, zerarEstatisticasUsuario } from '@/lib/estudo'
 import { getMateriasComEstatisticas } from '@/lib/materias'
-import { TrendingUp, TrendingDown, Clock, Target, BookOpen, Zap, Users, Settings, Plus, BarChart3, AlertCircle, CheckCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, Clock, Target, BookOpen, Zap, Users, Settings, Plus, BarChart3, AlertCircle, CheckCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 interface EstatisticasDashboard {
@@ -30,6 +30,9 @@ export default function DashboardPage() {
   const [estatisticasAdmin, setEstatisticasAdmin] = useState<EstatisticasAdmin | null>(null)
   const [materias, setMaterias] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [mostrarModalZerar, setMostrarModalZerar] = useState(false)
+  const [zerandoEstatisticas, setZerandoEstatisticas] = useState(false)
+
 
   useEffect(() => {
     carregarDados()
@@ -57,6 +60,26 @@ export default function DashboardPage() {
       setMaterias([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const zerarTodasEstatisticas = async () => {
+    setZerandoEstatisticas(true)
+    try {
+      const sucesso = await zerarEstatisticasUsuario()
+      if (sucesso) {
+        // Recarregar dados após zerar
+        await carregarDados()
+        setMostrarModalZerar(false)
+        alert('✅ Estatísticas zeradas com sucesso!')
+      } else {
+        alert('❌ Erro ao zerar estatísticas. Tente novamente.')
+      }
+    } catch (error) {
+      console.error('Erro ao zerar estatísticas:', error)
+      alert('❌ Erro inesperado ao zerar estatísticas.')
+    } finally {
+      setZerandoEstatisticas(false)
     }
   }
 
@@ -120,11 +143,65 @@ export default function DashboardPage() {
         <DashboardLayout title="Dashboard">
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+
+      {/* Modal de confirmação para zerar estatísticas */}
+      {mostrarModalZerar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              Zerar Todas as Estatísticas
+            </h3>
+            
+            <div className="mb-6">
+              <p className="text-gray-700 dark:text-gray-300 mb-4">
+                ⚠️ Esta ação irá <strong>deletar permanentemente</strong>:
+              </p>
+              <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1 ml-4">
+                <li>• Todo seu histórico de respostas</li>
+                <li>• Tempos de resposta registrados</li>
+                <li>• Alternativas eliminadas</li>
+                <li>• Todas as estatísticas de progresso</li>
+              </ul>
+              <p className="text-red-600 dark:text-red-400 text-sm mt-4 font-medium">
+                ⚠️ Esta ação não pode ser desfeita!
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setMostrarModalZerar(false)}
+                disabled={zerandoEstatisticas}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={zerarTodasEstatisticas}
+                disabled={zerandoEstatisticas}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {zerandoEstatisticas ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Zerando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Confirmar
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </DashboardLayout>
+        </div>
+      )}
+      </DashboardLayout>
       </ProtectedRoute>
-    )
-  }
+      )
+      }
 
   return (
     <ProtectedRoute>
@@ -448,6 +525,27 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Ações do usuário */}
+        {estatisticas && estatisticas.totalRespostas > 0 && (
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-gray-900 dark:text-white">⚙️ Configurações</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Gerencie seus dados de estudo
+                </p>
+              </div>
+              <button
+                onClick={() => setMostrarModalZerar(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                Zerar Estatísticas
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Continuar Estudando */}
         <div className="bg-gradient-to-r from-green-500 to-blue-600 p-6 rounded-lg text-white">

@@ -190,7 +190,6 @@ export async function getEstatisticasEstudo() {
   }
 }
 
-
 // ==================== FUNÇÃO PARA ZERAR ESTATÍSTICAS ====================
 
 export async function zerarEstatisticasUsuario() {

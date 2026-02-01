@@ -72,7 +72,7 @@ export default function LoginPage() {
             Sistema de Estudos
           </h2>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            CFP - Polícia Militar do DF
+            CFP XII
           </p>
         </div>
 

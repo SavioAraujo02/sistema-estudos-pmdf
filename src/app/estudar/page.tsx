@@ -10,7 +10,15 @@ import { getQuestoesParaEstudo, getEstatisticasEstudo, QuestaoEstudo } from '@/l
 import { getMaterias, getMateriasComEstatisticas } from '@/lib/materias'
 import { getTags, getQuestoesPorTags } from '@/lib/tags'
 import { supabase } from '@/lib/supabase'
-
+import { 
+  salvarProgressoSessao, 
+  buscarProgressoSessao, 
+  atualizarQuestaoAtual, 
+  finalizarSessao as finalizarProgressoSessao, 
+  abandonarSessao, 
+  temSessaoEmAndamento, 
+  getResumoSessao 
+} from '@/lib/progresso'
 
 interface ResultadoSessao {
   totalQuestoes: number
@@ -46,6 +54,10 @@ export default function EstudarPage() {
     modoEstudo: 'normal',
     salvarHistorico: true
   })
+  const [temProgressoSalvo, setTemProgressoSalvo] = useState(false)
+  const [resumoProgresso, setResumoProgresso] = useState<any>(null)
+  const [carregandoProgresso, setCarregandoProgresso] = useState(false)
+  const [carregandoDados, setCarregandoDados] = useState(true)
   
   // Atualizar salvarHistorico quando modo mudar
   useEffect(() => {
@@ -56,7 +68,11 @@ export default function EstudarPage() {
   }, [configuracao.modoEstudo])
 
   useEffect(() => {
-    carregarDados()
+    const inicializar = async () => {
+      await carregarDados()
+      await verificarProgressoSalvo()
+    }
+    inicializar()
   }, [])
 
   const filtrarQuestoesRevisao = async (questoes: QuestaoEstudo[]): Promise<QuestaoEstudo[]> => {
@@ -109,18 +125,134 @@ export default function EstudarPage() {
     }
   }
 
+  const verificarProgressoSalvo = async () => {
+    try {
+      const temProgresso = await temSessaoEmAndamento()
+      setTemProgressoSalvo(temProgresso)
+      
+      if (temProgresso) {
+        const resumo = await getResumoSessao()
+        setResumoProgresso(resumo)
+        console.log('📖 Sessão em andamento encontrada:', resumo)
+      }
+    } catch (error) {
+      console.error('Erro ao verificar progresso:', error)
+    }
+  }
+  
+  const continuarSessaoSalva = async () => {
+    setCarregandoProgresso(true)
+    try {
+      const progresso = await buscarProgressoSessao()
+      if (!progresso) {
+        alert('Erro: Sessão não encontrada.')
+        setCarregandoProgresso(false)
+        return
+      }
+  
+      console.log('📖 Restaurando sessão:', progresso)
+  
+      // Restaurar configuração
+      setConfiguracao(progresso.configuracao)
+      
+      // Buscar questões baseado nos IDs salvos
+      const { data: questoesData, error } = await supabase
+        .from('questoes')
+        .select(`
+          id,
+          enunciado,
+          tipo,
+          explicacao,
+          materias!inner(nome),
+          alternativas(id, texto, correta)
+        `)
+        .in('id', progresso.questoes_ids)
+  
+      if (error || !questoesData) {
+        console.error('Erro ao buscar questões salvas:', error)
+        alert('Erro ao carregar questões salvas.')
+        setCarregandoProgresso(false)
+        return
+      }
+  
+      // Reordenar questões na ordem original
+      const questoesOrdenadas = progresso.questoes_ids.map(id => 
+        questoesData.find(q => q.id === id)
+      ).filter(Boolean)
+  
+      const questoesFormatadas = questoesOrdenadas.map((item: any) => ({
+        id: item.id,
+        enunciado: item.enunciado,
+        tipo: item.tipo,
+        explicacao: item.explicacao,
+        materia: { nome: item.materias?.nome || 'Sem matéria' },
+        alternativas: item.alternativas || []
+      }))
+  
+      // Preparar dados para o ModoEstudo
+      const dadosRestauracao = {
+        questoes: questoesFormatadas,
+        questaoAtual: progresso.questao_atual,
+        respostasAnteriores: Array.isArray(progresso.respostas) ? progresso.respostas : [],
+        tempoInicio: new Date(progresso.tempo_inicio).getTime()
+      }
+  
+      console.log('🔄 Dados para restauração:', dadosRestauracao)
+  
+      setQuestoes(questoesFormatadas)
+      
+      // Salvar dados de restauração no localStorage temporariamente
+      localStorage.setItem('sessao_restauracao', JSON.stringify(dadosRestauracao))
+      
+      setModo('estudando')
+      
+      console.log('✅ Sessão restaurada:', {
+        questoes: questoesFormatadas.length,
+        questaoAtual: progresso.questao_atual,
+        respostas: progresso.respostas?.length || 0
+      })
+    } catch (error) {
+      console.error('Erro ao continuar sessão:', error)
+      alert('Erro inesperado ao continuar sessão.')
+    } finally {
+      setCarregandoProgresso(false)
+    }
+  }
+  
+  const iniciarNovaSessao = async () => {
+    try {
+      // Abandonar sessão anterior se existir
+      await abandonarSessao()
+      setTemProgressoSalvo(false)
+      setResumoProgresso(null)
+      
+      // Continuar com nova sessão
+      await iniciarSessao()
+    } catch (error) {
+      console.error('Erro ao iniciar nova sessão:', error)
+    }
+  }
+
   const carregarDados = async () => {
     console.log('Carregando dados do estudar...')
+    setCarregandoDados(true)
     
-    const [materiasData, tagsData, statsData] = await Promise.all([
-      getMateriasComEstatisticas(),
-      getTags(),
-      getEstatisticasEstudo()
-    ])
-    
-    setMaterias(materiasData)
-    setTags(tagsData)
-    setEstatisticas(statsData)
+    try {
+      const [materiasData, tagsData, statsData] = await Promise.all([
+        getMateriasComEstatisticas(),
+        getTags(),
+        getEstatisticasEstudo()
+      ])
+      
+      setMaterias(materiasData)
+      setTags(tagsData)
+      setEstatisticas(statsData)
+      console.log('✅ Dados carregados:', { materias: materiasData.length, tags: tagsData.length })
+    } catch (error) {
+      console.error('❌ Erro ao carregar dados:', error)
+    } finally {
+      setCarregandoDados(false)
+    }
   }
 
   const getQuestoesDisponiveis = async (): Promise<number> => {
@@ -163,6 +295,9 @@ export default function EstudarPage() {
 
   const iniciarSessao = async () => {
     setLoading(true)
+    
+    // Salvar progresso da nova sessão
+    console.log('💾 Iniciando nova sessão com progresso...')
     
     const questoesDisponiveis = await getQuestoesDisponiveis()
     console.log('Questões disponíveis:', questoesDisponiveis)
@@ -230,14 +365,30 @@ export default function EstudarPage() {
     }
     
     setQuestoes(questoesData)
-    setModo('estudando')
-    setLoading(false)
+
+  // Salvar progresso inicial da sessão
+  await salvarProgressoSessao(
+    configuracao,
+    questoesData.map(q => q.id),
+    0, // questão atual = 0 (primeira)
+    [] // sem respostas ainda
+  )
+
+  setModo('estudando')
+  setLoading(false)
   }
 
-  const finalizarSessao = (resultados: ResultadoSessao) => {
+  const finalizarSessaoEstudo = (resultados: ResultadoSessao) => {
+    // Finalizar progresso salvo
+    finalizarProgressoSessao()
+    
     setResultado(resultados)
     setModo('resultado')
     carregarDados()
+    
+    // Limpar estado de progresso
+    setTemProgressoSalvo(false)
+    setResumoProgresso(null)
   }
 
   const novaSessionao = () => {
@@ -272,12 +423,12 @@ export default function EstudarPage() {
     return (
       <ProtectedRoute>
         <DashboardLayout title={`${isAdmin ? '🧪 Teste' : '🎓 Estudo'} - ${getModoEstudoInfo(configuracao.modoEstudo).nome}`}>
-          <ModoEstudo 
-            questoes={questoes} 
-            onFinalizar={finalizarSessao}
-            configuracao={configuracao}
-            isAdmin={isAdmin}
-          />
+        <ModoEstudo 
+        questoes={questoes} 
+        onFinalizar={finalizarSessaoEstudo}
+        configuracao={configuracao}
+        isAdmin={isAdmin}
+      />
         </DashboardLayout>
       </ProtectedRoute>
     )
@@ -436,6 +587,50 @@ export default function EstudarPage() {
             </div>
           </div>
 
+          {/* Sessão em andamento */}
+          {temProgressoSalvo && resumoProgresso && (
+            <div className="bg-gradient-to-r from-orange-500 to-red-600 p-6 rounded-lg text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                    📖 Você tem uma sessão em andamento!
+                  </h3>
+                  <div className="text-orange-100 space-y-1">
+                    <p>• Questão {resumoProgresso.questaoAtual} de {resumoProgresso.questoesTotais}</p>
+                    <p>• {resumoProgresso.respostasFeitas} respostas já feitas</p>
+                    <p>• Tempo decorrido: {resumoProgresso.tempoDecorrido}</p>
+                    <p>• Modo: {getModoEstudoInfo(resumoProgresso.configuracao?.modoEstudo || 'normal').nome}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={continuarSessaoSalva}
+                    disabled={carregandoProgresso}
+                    className="px-6 py-3 bg-white text-orange-600 rounded-lg hover:bg-gray-100 transition-colors font-medium flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {carregandoProgresso ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+                        Carregando...
+                      </>
+                    ) : (
+                      <>
+                        ▶️ Continuar Sessão
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={iniciarNovaSessao}
+                    disabled={carregandoProgresso}
+                    className="px-6 py-3 border border-white text-white rounded-lg hover:bg-white hover:text-orange-600 transition-colors font-medium disabled:opacity-50"
+                  >
+                    🆕 Nova Sessão
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Estatísticas do usuário */}
           {!isAdmin && estatisticas && estatisticas.totalRespostas > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
@@ -505,7 +700,9 @@ export default function EstudarPage() {
                   onChange={(e) => setConfiguracao({...configuracao, materiaId: e.target.value || undefined})}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">Todas as matérias ({materias.reduce((total, m) => total + m.questoes_count, 0)} questões)</option>
+                  <option value="">
+  {carregandoDados ? 'Carregando matérias...' : `Todas as matérias (${materias.reduce((total, m) => total + m.questoes_count, 0)} questões)`}
+</option>
                   {materias.map((materia) => (
                     <option key={materia.id} value={materia.id}>
                       {materia.nome} ({materia.questoes_count} questões)

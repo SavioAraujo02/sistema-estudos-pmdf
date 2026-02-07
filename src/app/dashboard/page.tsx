@@ -25,7 +25,7 @@ interface EstatisticasAdmin {
 }
 
 export default function DashboardPage() {
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, user, activeUsers, refreshActiveUsers } = useAuth()
   const [estatisticas, setEstatisticas] = useState<EstatisticasDashboard | null>(null)
   const [estatisticasAdmin, setEstatisticasAdmin] = useState<EstatisticasAdmin | null>(null)
   const [materias, setMaterias] = useState<any[]>([])
@@ -131,7 +131,7 @@ export default function DashboardPage() {
     return {
       totalQuestoes,
       totalMaterias,
-      totalUsuarios: 1, // Implementar depois
+      totalUsuarios: activeUsers.totalActive,
       questoesMaisErradas: [], // Implementar depois
       atividadeRecente: [] // Implementar depois
     }
@@ -277,7 +277,10 @@ export default function DashboardPage() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Usuários Ativos</p>
                 <p className="text-2xl font-semibold text-gray-900 dark:text-white">
-                  {estatisticasAdmin?.totalUsuarios || 1}
+                  {activeUsers.totalActive}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {activeUsers.totalDevices} dispositivos conectados
                 </p>
               </div>
             </div>

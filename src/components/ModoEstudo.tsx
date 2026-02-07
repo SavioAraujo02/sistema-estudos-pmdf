@@ -14,6 +14,7 @@ import { EnunciadoFormatado } from './EnunciadoFormatado'
 import { ComentariosInline } from './ComentariosInline'
 import { ReportarErro } from './ReportarErro'
 import { supabase } from '@/lib/supabase'
+import { atualizarQuestaoAtual, adicionarRespostaProgresso } from '@/lib/progresso'
 
 interface ModoEstudoProps {
   questoes: QuestaoEstudo[]
@@ -26,6 +27,7 @@ interface ModoEstudoProps {
     salvarHistorico: boolean
   }
   isAdmin?: boolean
+  restaurarSessao?: boolean
 }
 
 interface ResultadoSessao {
@@ -70,9 +72,63 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
 
   useEffect(() => {
     const agora = Date.now()
+    
+    // Verificar se há dados de restauração
+    const dadosRestauracao = localStorage.getItem('sessao_restauracao')
+    
+    if (dadosRestauracao) {
+      try {
+        const dados = JSON.parse(dadosRestauracao)
+        console.log('🔄 Restaurando estado da sessão:', dados)
+        
+        // Restaurar questão atual
+        setQuestaoAtual(dados.questaoAtual || 0)
+        
+        // Restaurar respostas anteriores
+        if (dados.respostasAnteriores && dados.respostasAnteriores.length > 0) {
+          const respostasFormatadas = dados.respostasAnteriores.map((resp: any) => ({
+            questao: questoes.find(q => q.id === resp.questao_id) || questoes[0],
+            resposta: resp.resposta_usuario,
+            correta: resp.acertou,
+            tempo: resp.tempo_resposta
+          }))
+          
+          setRespostas(respostasFormatadas)
+          
+          // Marcar questões como respondidas
+          const questoesRespondidasMap = new Map()
+          dados.respostasAnteriores.forEach((resp: any, index: number) => {
+            questoesRespondidasMap.set(index, {
+              resposta: resp.resposta_usuario,
+              correta: resp.acertou,
+              mostrarResposta: true
+            })
+          })
+          setQuestoesRespondidas(questoesRespondidasMap)
+          
+          console.log('✅ Respostas restauradas:', respostasFormatadas.length)
+        }
+        
+        // Restaurar tempo de início se disponível
+        if (dados.tempoInicio) {
+          setTempoInicioSessao(dados.tempoInicio)
+        } else {
+          setTempoInicioSessao(agora)
+        }
+        
+        // Limpar dados de restauração
+        localStorage.removeItem('sessao_restauracao')
+        
+      } catch (error) {
+        console.error('Erro ao restaurar sessão:', error)
+        setTempoInicioSessao(agora)
+      }
+    } else {
+      setTempoInicioSessao(agora)
+    }
+    
     setTempoInicio(agora)
     setTempoQuestao(agora)
-    setTempoInicioSessao(agora)
     setCronometroQuestaoAtivo(true)
     
     // Iniciar cronômetro
@@ -90,7 +146,55 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
     return () => {
       if (id) clearInterval(id)
     }
-  }, [])
+  }, []) // Manter dependência vazia e usar useEffect separado
+
+  // useEffect separado para restauração quando questões mudarem
+useEffect(() => {
+  if (questoes.length === 0) return
+  
+  const dadosRestauracao = localStorage.getItem('sessao_restauracao')
+  
+  if (dadosRestauracao) {
+    try {
+      const dados = JSON.parse(dadosRestauracao)
+      console.log('🔄 Restaurando estado da sessão:', dados)
+      
+      // Restaurar questão atual
+      setQuestaoAtual(dados.questaoAtual || 0)
+      
+      // Restaurar respostas anteriores
+      if (dados.respostasAnteriores && dados.respostasAnteriores.length > 0) {
+        const respostasFormatadas = dados.respostasAnteriores.map((resp: any) => ({
+          questao: questoes.find(q => q.id === resp.questao_id) || questoes[0],
+          resposta: resp.resposta_usuario,
+          correta: resp.acertou,
+          tempo: resp.tempo_resposta
+        }))
+        
+        setRespostas(respostasFormatadas)
+        
+        // Marcar questões como respondidas
+        const questoesRespondidasMap = new Map()
+        dados.respostasAnteriores.forEach((resp: any, index: number) => {
+          questoesRespondidasMap.set(index, {
+            resposta: resp.resposta_usuario,
+            correta: resp.acertou,
+            mostrarResposta: true
+          })
+        })
+        setQuestoesRespondidas(questoesRespondidasMap)
+        
+        console.log('✅ Respostas restauradas:', respostasFormatadas.length)
+      }
+      
+      // Limpar dados de restauração
+      localStorage.removeItem('sessao_restauracao')
+      
+    } catch (error) {
+      console.error('Erro ao restaurar sessão:', error)
+    }
+  }
+}, [questoes.length]) // Usar tamanho do array como dependência
 
   // Atualizar cronômetro quando estado mudar
   useEffect(() => {
@@ -204,6 +308,16 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
       console.log('⚡ Modo rápido: resposta não salva no histórico')
     }
 
+    // SEMPRE salvar progresso da sessão (independente do modo)
+    console.log('💾 Salvando progresso da sessão...')
+    await adicionarRespostaProgresso({
+      questao_id: questao.id,
+      resposta_usuario: respostaSelecionada,
+      tempo_resposta: tempoResposta,
+      acertou: correta,
+      timestamp: new Date().toISOString()
+    })
+
     // PARAR cronômetro da questão após responder
     setCronometroQuestaoAtivo(false)
     // Salvar estado da questão respondida
@@ -223,6 +337,10 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const voltarQuestao = () => {
     if (questaoAtual > 0) {
       const novoIndice = questaoAtual - 1
+      
+      // Atualizar questão atual no progresso
+      atualizarQuestaoAtual(novoIndice)
+      
       setQuestaoAtual(novoIndice)
       
       // Restaurar estado da questão se já foi respondida
@@ -245,6 +363,10 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const avancarQuestao = () => {
     if (questaoAtual < questoes.length - 1) {
       const novoIndice = questaoAtual + 1
+      
+      // Atualizar questão atual no progresso
+      atualizarQuestaoAtual(novoIndice)
+      
       setQuestaoAtual(novoIndice)
       
       // Restaurar estado da questão se já foi respondida

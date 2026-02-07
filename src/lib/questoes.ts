@@ -398,6 +398,131 @@ export async function curtirComentario(comentarioId: string, tipo: 'like' | 'dis
   }
 }
 
+// ==================== NOVAS FUNÇÕES DE EDIÇÃO/EXCLUSÃO ====================
+
+// Editar comentário próprio
+export async function editarComentario(comentarioId: string, novoTexto: string) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('Usuário não autenticado')
+    }
+
+    // Verificar se o comentário pertence ao usuário
+    const { data: comentario, error: verificarError } = await supabase
+      .from('comentarios')
+      .select('usuario_id')
+      .eq('id', comentarioId)
+      .single()
+
+    if (verificarError || !comentario) {
+      throw new Error('Comentário não encontrado')
+    }
+
+    if (comentario.usuario_id !== user.id) {
+      throw new Error('Você só pode editar seus próprios comentários')
+    }
+
+    // Atualizar o comentário
+    const { data, error } = await supabase
+      .from('comentarios')
+      .update({ 
+        texto: novoTexto,
+        editado_em: new Date().toISOString()
+      })
+      .eq('id', comentarioId)
+      .select(`
+        *,
+        usuario:usuarios(nome, email)
+      `)
+      .single()
+
+    if (error) {
+      console.error('Erro ao editar comentário:', error)
+      return null
+    }
+
+    return {
+      ...data,
+      likes_count: 0,
+      dislikes_count: 0,
+      score: 0,
+      user_like: null
+    }
+  } catch (error) {
+    console.error('Erro inesperado ao editar comentário:', error)
+    throw error
+  }
+}
+
+// Excluir comentário próprio
+export async function excluirComentario(comentarioId: string) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('Usuário não autenticado')
+    }
+
+    // Verificar se o comentário pertence ao usuário
+    const { data: comentario, error: verificarError } = await supabase
+      .from('comentarios')
+      .select('usuario_id')
+      .eq('id', comentarioId)
+      .single()
+
+    if (verificarError || !comentario) {
+      throw new Error('Comentário não encontrado')
+    }
+
+    if (comentario.usuario_id !== user.id) {
+      throw new Error('Você só pode excluir seus próprios comentários')
+    }
+
+    // Excluir likes/dislikes do comentário primeiro
+    await supabase
+      .from('comentario_likes')
+      .delete()
+      .eq('comentario_id', comentarioId)
+
+    // Excluir o comentário
+    const { error } = await supabase
+      .from('comentarios')
+      .delete()
+      .eq('id', comentarioId)
+
+    if (error) {
+      console.error('Erro ao excluir comentário:', error)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('Erro inesperado ao excluir comentário:', error)
+    throw error
+  }
+}
+
+// Verificar se comentário pertence ao usuário
+export async function comentarioPertenceAoUsuario(comentarioId: string): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return false
+
+    const { data, error } = await supabase
+      .from('comentarios')
+      .select('usuario_id')
+      .eq('id', comentarioId)
+      .single()
+
+    if (error || !data) return false
+
+    return data.usuario_id === user.id
+  } catch (error) {
+    console.error('Erro ao verificar propriedade do comentário:', error)
+    return false
+  }
+}
+
 // ==================== FUNÇÕES DE REPORTS ====================
 
 export async function criarReport(questaoId: string, tipo: string, descricao: string) {
@@ -458,6 +583,7 @@ export async function getReports(questaoId?: string) {
     return []
   }
 }
+
 // ==================== FUNÇÕES DE ELIMINAÇÃO DE ALTERNATIVAS ====================
 
 export async function eliminarAlternativa(questaoId: string, alternativaId: string) {

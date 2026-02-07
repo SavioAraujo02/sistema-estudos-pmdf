@@ -3,11 +3,18 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { registerSession, updateSessionActivity, removeSession, getActiveUsers } from '@/lib/sessions'
 
 interface UsuarioStatus {
   status: 'pendente' | 'ativo' | 'expirado' | 'bloqueado'
   data_expiracao?: string
   observacoes?: string
+}
+
+interface ActiveUsersInfo {
+  totalActive: number
+  totalDevices: number
+  userDevices: Record<string, number>
 }
 
 interface AuthContextType {
@@ -17,8 +24,10 @@ interface AuthContextType {
   isAdmin: boolean
   userRole: 'admin' | 'user' | null
   userStatus: UsuarioStatus | null
+  activeUsers: ActiveUsersInfo
   signOut: () => Promise<void>
   verificarStatus: () => Promise<void>
+  refreshActiveUsers: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -28,8 +37,10 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   userRole: null,
   userStatus: null,
+  activeUsers: { totalActive: 0, totalDevices: 0, userDevices: {} },
   signOut: async () => {},
-  verificarStatus: async () => {}
+  verificarStatus: async () => {},
+  refreshActiveUsers: async () => {}
 })
 
 // Debounce function para evitar múltiplas chamadas
@@ -48,9 +59,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [userStatus, setUserStatus] = useState<UsuarioStatus | null>(null)
+  const [activeUsers, setActiveUsers] = useState<ActiveUsersInfo>({ 
+    totalActive: 0, 
+    totalDevices: 0, 
+    userDevices: {} 
+  })
   const [initialized, setInitialized] = useState(false)
 
-  
+  // Função para atualizar usuários ativos
+  const refreshActiveUsers = useCallback(async () => {
+    try {
+      const activeInfo = await getActiveUsers()
+      setActiveUsers(activeInfo)
+      console.log('📊 Usuários ativos atualizados:', activeInfo)
+    } catch (error) {
+      console.error('Erro ao atualizar usuários ativos:', error)
+    }
+  }, [])
+
   // Função para criar usuário automaticamente
   const criarUsuarioAutomaticamente = useCallback(async (userId: string) => {
     try {
@@ -149,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Erro ao verificar status:', error)
       return null
     }
-  }, [])
+  }, [criarUsuarioAutomaticamente])
 
   // Função para atualizar estado do usuário
   const updateUserState = useCallback(async (session: Session | null) => {
@@ -157,15 +183,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(session?.user ?? null)
 
     if (session?.user) {
+      // Verificar status do usuário
       await verificarStatusUsuario(session.user.id)
+      
+      // Registrar sessão ativa
+      await registerSession()
+      
+      // Atualizar usuários ativos
+      await refreshActiveUsers()
     } else {
+      // Remover sessão ao fazer logout
+      await removeSession()
+      
       setUserRole(null)
       setIsAdmin(false)
       setUserStatus(null)
+      
+      // Atualizar usuários ativos após logout
+      await refreshActiveUsers()
     }
     
     setLoading(false)
-  }, [verificarStatusUsuario])
+  }, [verificarStatusUsuario, refreshActiveUsers])
 
   // Função para verificar status manualmente
   const verificarStatus = useCallback(async () => {
@@ -180,6 +219,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [updateUserState]
   )
 
+  // Atualizar atividade da sessão periodicamente
+  useEffect(() => {
+    if (!user) return
+
+    const updateActivity = async () => {
+      await updateSessionActivity()
+    }
+
+    // Atualizar atividade a cada 5 minutos
+    const interval = setInterval(updateActivity, 5 * 60 * 1000)
+    
+    // Atualizar atividade em eventos de interação
+    const events = ['click', 'keypress', 'scroll', 'mousemove']
+    let lastUpdate = 0
+    
+    const handleActivity = () => {
+      const now = Date.now()
+      // Throttle: só atualiza se passou mais de 1 minuto da última atualização
+      if (now - lastUpdate > 60 * 1000) {
+        lastUpdate = now
+        updateActivity()
+      }
+    }
+
+    events.forEach(event => {
+      document.addEventListener(event, handleActivity, { passive: true })
+    })
+
+    return () => {
+      clearInterval(interval)
+      events.forEach(event => {
+        document.removeEventListener(event, handleActivity)
+      })
+    }
+  }, [user])
+
+  // Atualizar usuários ativos periodicamente
+  useEffect(() => {
+    if (!initialized) return
+
+    // Atualizar usuários ativos a cada 2 minutos
+    const interval = setInterval(refreshActiveUsers, 2 * 60 * 1000)
+    
+    return () => clearInterval(interval)
+  }, [initialized, refreshActiveUsers])
+
   useEffect(() => {
     if (initialized) return
     
@@ -187,7 +272,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const initializeAuth = async () => {
       try {
-        console.log('🔐 Inicializando autenticação (dispositivo único)...')
+        console.log('🔐 Inicializando autenticação com rastreamento de sessões...')
         
         const { data: { session }, error } = await supabase.auth.getSession()
         
@@ -201,7 +286,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         setInitialized(true)
-        console.log('✅ Autenticação inicializada')
+        console.log('✅ Autenticação inicializada com rastreamento de sessões')
         
       } catch (error) {
         console.error('❌ Erro na inicialização:', error)
@@ -219,7 +304,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (event, session) => {
         if (!mounted) return
         
-        console.log('🔄 Auth state changed (debounced):', event)
+        console.log('🔄 Auth state changed (com sessões):', event)
         debouncedUpdateUserState(session)
       }
     )
@@ -232,6 +317,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      // Remover sessão antes do logout
+      await removeSession()
       await supabase.auth.signOut()
       await updateUserState(null)
     } catch (error) {
@@ -247,8 +334,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdmin, 
       userRole, 
       userStatus, 
+      activeUsers,
       signOut, 
-      verificarStatus 
+      verificarStatus,
+      refreshActiveUsers
     }}>
       {children}
     </AuthContext.Provider>

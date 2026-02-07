@@ -15,10 +15,10 @@ export default function HomePage() {
         <div>
           <div className="text-6xl mb-4">🎖️</div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Sistema de Estudos PMDF
+            Sistema de Estudos
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            CFP - Curso de Formação de Praças
+            CFP XII
           </p>
         </div>
 
@@ -33,7 +33,7 @@ export default function HomePage() {
 
         <div className="text-sm text-gray-500 dark:text-gray-400">
           <p>Faça login para acessar o sistema</p>
-          <p>Sistema de estudos para o CFP da PMDF</p>
+          <p>Sistema de questões CFP XII</p>
         </div>
       </div>
 

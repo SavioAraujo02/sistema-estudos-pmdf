@@ -48,14 +48,18 @@ export async function getMateriasComEstatisticas() {
   // Para cada matéria, calcular estatísticas de acertos
   const materiasComStats = await Promise.all(
     (materias || []).map(async (materia) => {
-      // Buscar histórico de estudos para esta matéria
-      const { data: historico } = await supabase
-        .from('historico_estudos')
-        .select(`
-          acertou,
-          questoes!inner(materia_id)
-        `)
-        .eq('questoes.materia_id', materia.id)
+      // Pegar usuário atual
+const { data: { user } } = await supabase.auth.getUser()
+
+  // Buscar histórico de estudos para esta matéria E usuário atual
+  const { data: historico } = await supabase
+    .from('historico_estudos')
+    .select(`
+      acertou,
+      questoes!inner(materia_id)
+    `)
+    .eq('questoes.materia_id', materia.id)
+    .eq('usuario_id', user?.id || 'none') // Filtrar por usuário
 
       const totalRespostas = historico?.length || 0
       const acertos = historico?.filter(h => h.acertou).length || 0

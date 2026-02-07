@@ -45,16 +45,26 @@ export async function createQuestao(questaoData: {
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
   alternativas?: { texto: string; correta: boolean }[]
+  assunto?: string
+  subtopico?: string
+  dificuldade?: 'facil' | 'medio' | 'dificil'
+  ano_prova?: number
+  banca?: string
 }) {
   // Criar a questão
   const { data: questao, error: questaoError } = await supabase
-    .from('questoes')
-    .insert([{
-      materia_id: questaoData.materia_id,
-      enunciado: questaoData.enunciado,
-      tipo: questaoData.tipo,
-      explicacao: questaoData.explicacao
-    }])
+  .from('questoes')
+  .insert([{
+    materia_id: questaoData.materia_id,
+    enunciado: questaoData.enunciado,
+    tipo: questaoData.tipo,
+    explicacao: questaoData.explicacao,
+    assunto: questaoData.assunto,
+    subtopico: questaoData.subtopico,
+    dificuldade: questaoData.dificuldade,
+    ano_prova: questaoData.ano_prova,
+    banca: questaoData.banca
+  }])
     .select()
     .single()
 

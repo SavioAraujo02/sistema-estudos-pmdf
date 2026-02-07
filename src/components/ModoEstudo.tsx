@@ -61,6 +61,7 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null)
   const [tempoInicioSessao, setTempoInicioSessao] = useState(Date.now())
   const [cronometroQuestaoAtivo, setCronometroQuestaoAtivo] = useState(true)
+  const [cronometroSessaoPausado, setCronometroSessaoPausado] = useState(false)
 
   // Estados dos comentários e reports
   const [mostrarComentarios, setMostrarComentarios] = useState(false)
@@ -98,16 +99,21 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
       
       const id = setInterval(() => {
         const agora = Date.now()
-        setTempoDecorrido(agora - tempoInicioSessao)
         
-        if (cronometroQuestaoAtivo) {
+        // Só atualiza tempo da sessão se não estiver pausado
+        if (!cronometroSessaoPausado) {
+          setTempoDecorrido(agora - tempoInicioSessao)
+        }
+        
+        // Só atualiza tempo da questão se ambos estiverem ativos
+        if (cronometroQuestaoAtivo && !cronometroSessaoPausado) {
           setTempoQuestaoAtual(agora - tempoQuestao)
         }
       }, 100)
       
       setIntervalId(id)
     }
-  }, [cronometroQuestaoAtivo, tempoQuestao, tempoInicioSessao])
+  }, [cronometroQuestaoAtivo, cronometroSessaoPausado, tempoQuestao, tempoInicioSessao])
 
   // Limpar intervalo quando componente for desmontado
   useEffect(() => {
@@ -405,26 +411,60 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
           </div>
           
           {/* Cronômetros */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <Timer className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-mono text-blue-700 dark:text-blue-300">
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
+            <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg ${
+              cronometroSessaoPausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20'
+            }`}>
+              <Timer className={`h-3 w-3 sm:h-4 sm:w-4 ${
+                cronometroSessaoPausado ? 'text-red-600' : 'text-blue-600'
+              }`} />
+              <span className={`text-xs sm:text-sm font-mono ${
+                cronometroSessaoPausado ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'
+              }`}>
                 {formatarTempo(tempoQuestaoAtual)}
               </span>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              <Clock className="h-4 w-4 text-gray-600" />
-              <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
+            <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg ${
+              cronometroSessaoPausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-900'
+            }`}>
+              <Clock className={`h-3 w-3 sm:h-4 sm:w-4 ${
+                cronometroSessaoPausado ? 'text-red-600' : 'text-gray-600'
+              }`} />
+              <span className={`text-xs sm:text-sm font-mono ${
+                cronometroSessaoPausado ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'
+              }`}>
                 {formatarTempo(tempoDecorrido)}
               </span>
             </div>
-            <button
-              onClick={reiniciarSessao}
-              className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Reiniciar
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCronometroSessaoPausado(!cronometroSessaoPausado)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs sm:text-sm rounded transition-colors ${
+                  cronometroSessaoPausado 
+                    ? 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
+                    : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                }`}
+                title={cronometroSessaoPausado ? 'Continuar cronômetros' : 'Pausar cronômetros'}
+              >
+                {cronometroSessaoPausado ? (
+                  <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                ) : (
+                  <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                  </svg>
+                )}
+                <span className="hidden sm:inline">{cronometroSessaoPausado ? 'Play' : 'Pause'}</span>
+              </button>
+              <button
+                onClick={reiniciarSessao}
+                className="flex items-center gap-1 px-2 py-1 text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              >
+                <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Reiniciar</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -607,15 +647,16 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
           </div>
         )}
 
-        {/* Botões de ação */}
-        <div className="flex gap-3">
+                {/* Botões de ação */}
+                <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={voltarQuestao}
             disabled={questaoAtual === 0}
-            className="px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
           >
             <ArrowLeft className="h-4 w-4" />
-            Anterior
+            <span className="hidden sm:inline">Anterior</span>
+            <span className="sm:hidden">Ant.</span>
           </button>
 
           {!mostrarResposta ? (
@@ -623,15 +664,16 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
               <button
                 onClick={verificarResposta}
                 disabled={respostaSelecionada === null}
-                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 px-4 sm:px-6 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
-                Confirmar Resposta
+                <span className="hidden sm:inline">Confirmar Resposta</span>
+                <span className="sm:hidden">Confirmar</span>
               </button>
               
               <button
                 onClick={pularQuestao}
                 disabled={isUltimaQuestao}
-                className="px-4 py-3 border border-yellow-300 text-yellow-700 dark:text-yellow-400 rounded-lg hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-3 sm:px-4 py-2 sm:py-3 border border-yellow-300 text-yellow-700 dark:text-yellow-400 rounded-lg hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 Pular
                 <ArrowRight className="h-4 w-4" />
@@ -641,18 +683,20 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
             <>
               <button
                 onClick={proximaQuestao}
-                className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                className="flex-1 px-4 sm:px-6 py-2 sm:py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
               >
-                {isUltimaQuestao ? 'Finalizar Sessão' : 'Próxima Questão'}
+                <span className="hidden sm:inline">{isUltimaQuestao ? 'Finalizar Sessão' : 'Próxima Questão'}</span>
+                <span className="sm:hidden">{isUltimaQuestao ? 'Finalizar' : 'Próxima'}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
               
               {!isUltimaQuestao && (
                 <button
                   onClick={avancarQuestao}
-                  className="px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-2"
+                  className="px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
-                                    Avançar
+                  <span className="hidden sm:inline">Avançar</span>
+                  <span className="sm:hidden">Avanç.</span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
               )}

@@ -32,6 +32,11 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
   const [respostaCertoErrado, setRespostaCertoErrado] = useState<boolean | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [showExemplos, setShowExemplos] = useState(false)
+  const [assunto, setAssunto] = useState('')
+  const [subtopico, setSubtopico] = useState('')
+  const [dificuldade, setDificuldade] = useState<'facil' | 'medio' | 'dificil' | ''>('')
+  const [anoProva, setAnoProva] = useState<number | ''>('')
+  const [banca, setBanca] = useState('')
 
   const processarTextoAutomatico = () => {
     const questaoParseada = parseQuestao(textoCompleto)
@@ -113,7 +118,12 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
       resposta_certo_errado: tipo === 'certo_errado' ? respostaCertoErrado : null,
       alternativas: tipo === 'multipla_escolha' 
         ? alternativas.filter(alt => alt.texto.trim())
-        : undefined
+        : undefined,
+      assunto: assunto.trim() || undefined,
+      subtopico: subtopico.trim() || undefined,
+      dificuldade: dificuldade || undefined,
+      ano_prova: anoProva || undefined,
+      banca: banca.trim() || undefined
     }
 
     const resultado = await createQuestao(dadosQuestao)
@@ -374,6 +384,90 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
                   rows={3}
                   placeholder="Explique a resposta correta, cite jurisprudência, dicas..."
                 />
+              </div>
+
+                            {/* Campos de Categorização */}
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
+                  📋 Categorização (opcional)
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Assunto */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Assunto
+                    </label>
+                    <input
+                      type="text"
+                      value={assunto}
+                      onChange={(e) => setAssunto(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ex: Direitos Fundamentais"
+                    />
+                  </div>
+
+                  {/* Subtópico */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Subtópico
+                    </label>
+                    <input
+                      type="text"
+                      value={subtopico}
+                      onChange={(e) => setSubtopico(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ex: Liberdade de Expressão"
+                    />
+                  </div>
+
+                  {/* Dificuldade */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Dificuldade
+                    </label>
+                    <select
+                      value={dificuldade}
+                      onChange={(e) => setDificuldade(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="facil">🟢 Fácil</option>
+                      <option value="medio">🟡 Médio</option>
+                      <option value="dificil">🔴 Difícil</option>
+                    </select>
+                  </div>
+
+                  {/* Ano da Prova */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Ano da Prova
+                    </label>
+                    <input
+                      type="number"
+                      value={anoProva}
+                      onChange={(e) => setAnoProva(e.target.value ? parseInt(e.target.value) : '')}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ex: 2024"
+                      min="2000"
+                      max="2030"
+                    />
+                  </div>
+
+                  {/* Banca */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Banca Organizadora
+                    </label>
+                    <input
+                      type="text"
+                      value={banca}
+                      onChange={(e) => setBanca(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ex: CESPE, FCC, VUNESP"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Botões */}

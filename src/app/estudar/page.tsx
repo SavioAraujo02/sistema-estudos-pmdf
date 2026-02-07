@@ -27,6 +27,8 @@ interface ConfiguracaoSessao {
   numeroQuestoes: number | 'todas'
   modoEstudo: 'normal' | 'revisao' | 'rapido' | 'aleatorio'
   salvarHistorico: boolean
+  assunto?: string
+  dificuldade?: 'facil' | 'medio' | 'dificil'
 }
 
 export default function EstudarPage() {
@@ -138,6 +140,17 @@ export default function EstudarPage() {
         } else {
           return 0
         }
+      }
+
+      // ADICIONAR AQUI OS NOVOS FILTROS
+      // Filtrar por assunto se selecionado
+      if (configuracao.assunto) {
+        query = query.eq('assunto', configuracao.assunto)
+      }
+
+      // Filtrar por dificuldade se selecionada
+      if (configuracao.dificuldade) {
+        query = query.eq('dificuldade', configuracao.dificuldade)
       }
 
       const { count } = await query
@@ -542,6 +555,43 @@ export default function EstudarPage() {
                   </div>
                 </div>
               )}
+
+                            {/* Seleção de Assunto */}
+                            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Filtrar por Assunto (opcional)
+                </label>
+                <select
+                  value={configuracao.assunto || ''}
+                  onChange={(e) => setConfiguracao({...configuracao, assunto: e.target.value || undefined})}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Todos os assuntos</option>
+                  <option value="Direito Constitucional">📜 Direito Constitucional</option>
+                  <option value="Direito Administrativo">🏛️ Direito Administrativo</option>
+                  <option value="Direito Penal">⚖️ Direito Penal</option>
+                  <option value="Português">📝 Português</option>
+                  <option value="Raciocínio Lógico">🧮 Raciocínio Lógico</option>
+                  <option value="Informática">💻 Informática</option>
+                </select>
+              </div>
+
+              {/* Seleção de Dificuldade */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Filtrar por Dificuldade (opcional)
+                </label>
+                <select
+                  value={configuracao.dificuldade || ''}
+                  onChange={(e) => setConfiguracao({...configuracao, dificuldade: e.target.value as any || undefined})}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Todas as dificuldades</option>
+                  <option value="facil">🟢 Fácil</option>
+                  <option value="medio">🟡 Médio</option>
+                  <option value="dificil">🔴 Difícil</option>
+                </select>
+              </div>
 
               {/* Número de Questões */}
               <div>

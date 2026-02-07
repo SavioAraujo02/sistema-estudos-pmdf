@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Menu, Home } from 'lucide-react'
+import { Menu, LogOut } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from './ThemeToggle'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -77,13 +79,16 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
             <div className="flex items-center gap-4">
               <ThemeToggle />
               
-              <Link
-                href="/"
-                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut()
+                  window.location.href = '/login'
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
               >
-                <Home className="h-4 w-4" />
-                <span className="hidden sm:block">Início</span>
-              </Link>
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:block">Sair</span>
+              </button>
             </div>
           </div>
         </header>

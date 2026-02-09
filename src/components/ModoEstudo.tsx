@@ -601,13 +601,28 @@ useEffect(() => {
 
       {/* Questão */}
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="mb-6">
-          <div className="mb-4">
-            <EnunciadoFormatado 
-              texto={questao.enunciado}
-              className="text-lg font-medium"
-            />
-          </div>
+      <div className="mb-6">
+  <div className="mb-4">
+    <EnunciadoFormatado 
+      texto={questao.enunciado}
+      className="text-lg font-medium"
+    />
+  </div>
+  
+  {/* Imagem da questão */}
+  {questao.imagem_url && (
+    <div className="mb-4">
+      <img
+        src={questao.imagem_url}
+        alt="Imagem da questão"
+        className="max-w-full h-auto max-h-96 mx-auto rounded-lg shadow-sm border border-gray-200 dark:border-gray-600"
+        onError={(e) => {
+          console.error('Erro ao carregar imagem da questão:', questao.imagem_url)
+          e.currentTarget.style.display = 'none'
+        }}
+      />
+    </div>
+  )}
           
           <div className="flex items-center justify-between">
             <span className={`inline-block px-2 py-1 text-xs rounded-full ${
@@ -617,6 +632,16 @@ useEffect(() => {
             }`}>
               {questao.tipo === 'certo_errado' ? 'Certo/Errado' : 'Múltipla Escolha'}
             </span>
+
+            {/* Mostrar assunto da questão */}
+            {questao.assunto && (
+              <span
+                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-white ml-2"
+                style={{ backgroundColor: questao.assunto.cor }}
+              >
+                {questao.assunto.nome}
+              </span>
+            )}
 
             {/* Botão para limpar eliminações - só aparece se houver alternativas eliminadas */}
             {questao.tipo === 'multipla_escolha' && alternativasEliminadas.length > 0 && (

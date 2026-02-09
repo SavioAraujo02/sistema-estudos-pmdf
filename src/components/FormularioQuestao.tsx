@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { X, Plus, Trash2, Loader2, Wand2, FileText, HelpCircle } from 'lucide-react'
 import { createQuestao } from '@/lib/questoes'
 import { parseQuestao, getExemplosFormato } from '@/lib/questaoParser'
+import { UploadImagem } from './UploadImagem'
 
 interface FormularioQuestaoProps {
   materiaId: string
@@ -37,6 +38,10 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
   const [dificuldade, setDificuldade] = useState<'facil' | 'medio' | 'dificil' | ''>('')
   const [anoProva, setAnoProva] = useState<number | ''>('')
   const [banca, setBanca] = useState('')
+  
+  // Estados para imagem
+  const [imagemUrl, setImagemUrl] = useState<string | undefined>(undefined)
+  const [imagemNome, setImagemNome] = useState<string | undefined>(undefined)
 
   const processarTextoAutomatico = () => {
     const questaoParseada = parseQuestao(textoCompleto)
@@ -110,32 +115,39 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
 
     setSalvando(true)
 
-    const dadosQuestao = {
-      materia_id: materiaId,
-      enunciado: enunciado.trim(),
-      tipo,
-      explicacao: explicacao.trim() || undefined,
-      resposta_certo_errado: tipo === 'certo_errado' ? respostaCertoErrado : null,
-      alternativas: tipo === 'multipla_escolha' 
-        ? alternativas.filter(alt => alt.texto.trim())
-        : undefined,
-      assunto: assunto.trim() || undefined,
-      subtopico: subtopico.trim() || undefined,
-      dificuldade: dificuldade || undefined,
-      ano_prova: anoProva || undefined,
-      banca: banca.trim() || undefined
-    }
+    try {
+      const dadosQuestao = {
+        materia_id: materiaId,
+        enunciado: enunciado.trim(),
+        tipo,
+        explicacao: explicacao.trim() || undefined,
+        resposta_certo_errado: tipo === 'certo_errado' ? respostaCertoErrado : null,
+        alternativas: tipo === 'multipla_escolha' 
+          ? alternativas.filter(alt => alt.texto.trim())
+          : undefined,
+        assunto: assunto.trim() || undefined,
+        subtopico: subtopico.trim() || undefined,
+        dificuldade: dificuldade || undefined,
+        ano_prova: anoProva || undefined,
+        banca: banca.trim() || undefined,
+        imagem_url: imagemUrl,
+        imagem_nome: imagemNome
+      }
 
-    const resultado = await createQuestao(dadosQuestao)
-    
-    if (resultado) {
-      onSuccess()
-      onClose()
-    } else {
-      alert('Erro ao salvar questão. Tente novamente.')
+      const resultado = await createQuestao(dadosQuestao)
+      
+      if (resultado) {
+        onSuccess()
+        onClose()
+      } else {
+        alert('Erro ao salvar questão. Tente novamente.')
+      }
+    } catch (error) {
+      console.error('Erro ao salvar questão:', error)
+      alert('Erro inesperado ao salvar questão.')
+    } finally {
+      setSalvando(false)
     }
-    
-    setSalvando(false)
   }
 
   return (
@@ -194,8 +206,8 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
           </div>
         </div>
 
-                {/* Exemplos */}
-                {showExemplos && (
+        {/* Exemplos */}
+        {showExemplos && (
           <div className="p-6 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
             <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
               {getExemplosFormato()}
@@ -278,6 +290,7 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
                   </label>
                 </div>
               </div>
+
               {/* Resposta para Certo/Errado */}
               {tipo === 'certo_errado' && (
                 <div>
@@ -321,7 +334,7 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
               {/* Alternativas (só para múltipla escolha) */}
               {tipo === 'multipla_escolha' && (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center justify-between mb-3">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                       Alternativas
                     </label>
@@ -372,6 +385,20 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
                 </div>
               )}
 
+              {/* Campo de Imagem */}
+              <UploadImagem
+                questaoId="temp-new-questao"
+                imagemAtual={imagemUrl}
+                onImagemUpload={(url, nome) => {
+                  setImagemUrl(url)
+                  setImagemNome(nome)
+                }}
+                onImagemRemover={() => {
+                  setImagemUrl(undefined)
+                  setImagemNome(undefined)
+                }}
+              />
+
               {/* Explicação */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -386,8 +413,8 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
                 />
               </div>
 
-                            {/* Campos de Categorização */}
-                            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+              {/* Campos de Categorização */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                 <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
                   📋 Categorização (opcional)
                 </h3>

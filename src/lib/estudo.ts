@@ -5,28 +5,43 @@ export interface QuestaoEstudo {
   enunciado: string
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
+  imagem_url?: string
+  imagem_nome?: string
   materia: { nome: string }
+  assunto?: { id: string; nome: string; cor: string }
   alternativas?: { id: string; texto: string; correta: boolean }[]
 }
 
 export async function getQuestoesParaEstudo(
   materiaId?: string,
   limite: number = 1000,
-  questaoIds?: string[]
+  questaoIds?: string[],
+  filtros?: {
+    assuntoIds?: string[]
+    dificuldade?: string
+    anoProva?: number
+    banca?: string
+  }
 ): Promise<QuestaoEstudo[]> {
   try {
     console.log('Buscando questões com parâmetros:', { materiaId, limite, questaoIds })
     
     let query = supabase
-      .from('questoes')
-      .select(`
-        id,
-        enunciado,
-        tipo,
-        explicacao,
-        materias!inner(nome),
-        alternativas(id, texto, correta)
-      `)
+    .from('questoes')
+    .select(`
+      id,
+      enunciado,
+      tipo,
+      explicacao,
+      imagem_url,
+      imagem_nome,
+      dificuldade,
+      ano_prova,
+      banca,
+      materias!inner(nome),
+      assuntos(id, nome, cor),
+      alternativas(id, texto, correta)
+    `)
 
     // Filtrar por matéria se especificada
     if (materiaId) {
@@ -36,6 +51,23 @@ export async function getQuestoesParaEstudo(
     // Filtrar por IDs específicos se fornecidos (para tags)
     if (questaoIds && questaoIds.length > 0) {
       query = query.in('id', questaoIds)
+    }
+
+    // NOVOS FILTROS - ADICIONAR ESTAS LINHAS:
+    if (filtros?.assuntoIds && filtros.assuntoIds.length > 0) {
+      query = query.in('assunto_id', filtros.assuntoIds)
+    }
+
+    if (filtros?.dificuldade) {
+      query = query.eq('dificuldade', filtros.dificuldade)
+    }
+
+    if (filtros?.anoProva) {
+      query = query.eq('ano_prova', filtros.anoProva)
+    }
+
+    if (filtros?.banca) {
+      query = query.ilike('banca', `%${filtros.banca}%`)
     }
 
     // Aplicar limite apenas se for um número válido e menor que 1000
@@ -58,7 +90,14 @@ export async function getQuestoesParaEstudo(
       enunciado: item.enunciado,
       tipo: item.tipo,
       explicacao: item.explicacao,
+      imagem_url: item.imagem_url,
+      imagem_nome: item.imagem_nome,
       materia: { nome: item.materias?.nome || 'Sem matéria' },
+      assunto: item.assuntos ? {
+        id: item.assuntos.id,
+        nome: item.assuntos.nome,
+        cor: item.assuntos.cor
+      } : undefined,
       alternativas: item.alternativas || []
     }))
 

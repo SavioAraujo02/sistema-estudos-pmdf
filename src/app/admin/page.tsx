@@ -26,7 +26,6 @@ import {
   Trash2
 } from 'lucide-react'
 import { getReports } from '@/lib/questoes'
-import { getAssuntosComEstatisticas, createAssunto, updateAssunto, deleteAssunto } from '@/lib/assuntos'
 import { getUsuariosDetalhados, getEstatisticasAdmin, desconectarUsuario } from '@/lib/admin'
 import { getMaterias } from '@/lib/materias'
 import { supabase } from '@/lib/supabase'
@@ -104,20 +103,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [questaoSelecionada, setQuestaoSelecionada] = useState<string | null>(null)
   const [modalQuestaoAberto, setModalQuestaoAberto] = useState(false)
-  const [assuntos, setAssuntos] = useState<any[]>([])
-  const [materiasDisponiveis, setMateriasDisponiveis] = useState<any[]>([])
-  const [showAssuntoModal, setShowAssuntoModal] = useState(false)
-  const [showEditAssuntoModal, setShowEditAssuntoModal] = useState(false)
-  const [showDeleteAssuntoModal, setShowDeleteAssuntoModal] = useState(false)
-  const [novoAssunto, setNovoAssunto] = useState({
-    materia_id: '',
-    nome: '',
-    descricao: '',
-    cor: '#3B82F6',
-    ordem: 0
-  })
-  const [assuntoEditando, setAssuntoEditando] = useState<any>(null)
-  const [assuntoExcluindo, setAssuntoExcluindo] = useState<any>(null)
+
 
   useEffect(() => {
     if (isAdmin) {
@@ -132,32 +118,12 @@ export default function AdminPage() {
         carregarReports(),
         carregarUsuarios(),
         carregarEstatisticas(),
-        carregarAssuntos(),
-        carregarUsuariosDetalhados(),
-        carregarMateriasDisponiveis()
+        carregarUsuariosDetalhados()
       ])
     } catch (error) {
       console.error('Erro ao carregar dados admin:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const carregarAssuntos = async () => {
-    try {
-      const dados = await getAssuntosComEstatisticas()
-      setAssuntos(dados)
-    } catch (error) {
-      console.error('Erro ao carregar assuntos:', error)
-    }
-  }
-  
-  const carregarMateriasDisponiveis = async () => {
-    try {
-      const dados = await getMaterias()
-      setMateriasDisponiveis(dados)
-    } catch (error) {
-      console.error('Erro ao carregar matérias:', error)
     }
   }
 
@@ -396,7 +362,6 @@ export default function AdminPage() {
                 { id: 'dashboard', nome: 'Dashboard', icon: BarChart3 },
                 { id: 'reports', nome: `Reports (${estatisticas.reportsPendentes})`, icon: Flag },
                 { id: 'usuarios', nome: `Usuários (${estatisticas.usuariosPendentes})`, icon: Users },
-                { id: 'assuntos', nome: `Assuntos (${assuntos.length})`, icon: BookOpen },
                 { id: 'configuracoes', nome: 'Configurações', icon: Settings }
               ].map((aba) => {
                   const Icon = aba.icon
@@ -440,7 +405,6 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
-
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800">
                       <div className="flex items-center gap-3">
                         <UserCheck className="h-8 w-8 text-yellow-600" />
@@ -818,91 +782,6 @@ export default function AdminPage() {
   </div>
 )}
 
-                            {/* ABA ASSUNTOS */}
-                            {abaAtiva === 'assuntos' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      📚 Gerenciar Assuntos
-                    </h2>
-                    <button
-                      onClick={() => setShowAssuntoModal(true)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Novo Assunto
-                    </button>
-                  </div>
-
-                  {assuntos.length === 0 ? (
-                    <div className="text-center py-12">
-                      <BookOpen className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                        Nenhum assunto encontrado
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Crie assuntos para organizar as questões por tópicos.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {assuntos.map((assunto) => (
-                        <div key={assunto.id} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-3 flex-1">
-                              <div 
-                                className="w-4 h-4 rounded-full"
-                                style={{ backgroundColor: assunto.cor }}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                                  {assunto.nome}
-                                </h3>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                  {assunto.materia?.nome}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">
-                              {assunto.questoes_count} questões
-                            </span>
-                          </div>
-
-                          {assunto.descricao && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                              {assunto.descricao}
-                            </p>
-                          )}
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setAssuntoEditando({...assunto})
-                                setShowEditAssuntoModal(true)
-                              }}
-                              className="flex-1 px-3 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors flex items-center justify-center gap-1"
-                            >
-                              <Edit className="h-3 w-3" />
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => {
-                                setAssuntoExcluindo(assunto)
-                                setShowDeleteAssuntoModal(true)
-                              }}
-                              className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 transition-colors flex items-center gap-1"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Excluir
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* ABA CONFIGURAÇÕES */}
               {abaAtiva === 'configuracoes' && (
                 <div className="space-y-6">
@@ -937,287 +816,7 @@ export default function AdminPage() {
           setModalQuestaoAberto(false)
           setQuestaoSelecionada(null)
         }}
-      />
-              {/* Modal para novo assunto */}
-              {showAssuntoModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-md mx-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Novo Assunto
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Matéria *
-                  </label>
-                  <select
-                    value={novoAssunto.materia_id}
-                    onChange={(e) => setNovoAssunto({...novoAssunto, materia_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Selecione uma matéria</option>
-                    {materiasDisponiveis.map((materia) => (
-                      <option key={materia.id} value={materia.id}>
-                        {materia.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Nome do Assunto *
-                  </label>
-                  <input
-                    type="text"
-                    value={novoAssunto.nome}
-                    onChange={(e) => setNovoAssunto({...novoAssunto, nome: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Ex: Direitos Fundamentais"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Descrição (opcional)
-                  </label>
-                  <textarea
-                    value={novoAssunto.descricao}
-                    onChange={(e) => setNovoAssunto({...novoAssunto, descricao: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={2}
-                    placeholder="Descrição do assunto..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Cor
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={novoAssunto.cor}
-                      onChange={(e) => setNovoAssunto({...novoAssunto, cor: e.target.value})}
-                      className="w-12 h-8 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={novoAssunto.cor}
-                      onChange={(e) => setNovoAssunto({...novoAssunto, cor: e.target.value})}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="#3B82F6"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setShowAssuntoModal(false)
-                    setNovoAssunto({ materia_id: '', nome: '', descricao: '', cor: '#3B82F6', ordem: 0 })
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!novoAssunto.nome.trim() || !novoAssunto.materia_id) return
-                    setLoading(true)
-                    const assunto = await createAssunto(novoAssunto)
-                    if (assunto) {
-                      await carregarAssuntos()
-                      setShowAssuntoModal(false)
-                      setNovoAssunto({ materia_id: '', nome: '', descricao: '', cor: '#3B82F6', ordem: 0 })
-                    }
-                    setLoading(false)
-                  }}
-                  disabled={!novoAssunto.nome.trim() || !novoAssunto.materia_id || loading}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Salvar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-                {/* Modal para editar assunto */}
-                {showEditAssuntoModal && assuntoEditando && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-md mx-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Editar Assunto
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Matéria
-                  </label>
-                  <select
-                    value={assuntoEditando.materia_id}
-                    onChange={(e) => setAssuntoEditando({...assuntoEditando, materia_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {materiasDisponiveis.map((materia) => (
-                      <option key={materia.id} value={materia.id}>
-                        {materia.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Nome do Assunto *
-                  </label>
-                  <input
-                    type="text"
-                    value={assuntoEditando.nome}
-                    onChange={(e) => setAssuntoEditando({...assuntoEditando, nome: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Ex: Direitos Fundamentais"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Descrição (opcional)
-                  </label>
-                  <textarea
-                    value={assuntoEditando.descricao || ''}
-                    onChange={(e) => setAssuntoEditando({...assuntoEditando, descricao: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={2}
-                    placeholder="Descrição do assunto..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Cor
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={assuntoEditando.cor}
-                      onChange={(e) => setAssuntoEditando({...assuntoEditando, cor: e.target.value})}
-                      className="w-12 h-8 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={assuntoEditando.cor}
-                      onChange={(e) => setAssuntoEditando({...assuntoEditando, cor: e.target.value})}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="#3B82F6"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setShowEditAssuntoModal(false)
-                    setAssuntoEditando(null)
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!assuntoEditando.nome.trim()) return
-                    setLoading(true)
-                    const sucesso = await updateAssunto(assuntoEditando.id, {
-                      nome: assuntoEditando.nome,
-                      descricao: assuntoEditando.descricao,
-                      cor: assuntoEditando.cor,
-                      ordem: assuntoEditando.ordem
-                    })
-                    if (sucesso) {
-                      await carregarAssuntos()
-                      setShowEditAssuntoModal(false)
-                      setAssuntoEditando(null)
-                    }
-                    setLoading(false)
-                  }}
-                  disabled={!assuntoEditando.nome.trim() || loading}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Salvar Alterações
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal para excluir assunto */}
-        {showDeleteAssuntoModal && assuntoExcluindo && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-md mx-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-full">
-                  <Trash2 className="h-6 w-6 text-red-600" />
-                </div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Excluir Assunto
-                </h2>
-              </div>
-              
-              <p className="text-gray-600 dark:text-gray-400 mb-2">
-                Tem certeza que deseja excluir o assunto:
-              </p>
-              <p className="font-semibold text-gray-900 dark:text-white mb-4">
-                "{assuntoExcluindo.nome}"
-              </p>
-              
-              {assuntoExcluindo.questoes_count > 0 ? (
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg mb-4">
-                  <p className="text-sm text-red-800 dark:text-red-300">
-                    ⚠️ Este assunto possui {assuntoExcluindo.questoes_count} questões cadastradas. 
-                    Não é possível excluí-lo. Remova todas as questões primeiro.
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg mb-4">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                    ⚠️ Esta ação não pode ser desfeita.
-                  </p>
-                </div>
-              )}
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowDeleteAssuntoModal(false)
-                    setAssuntoExcluindo(null)
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    if (assuntoExcluindo.questoes_count > 0) return
-                    setLoading(true)
-                    try {
-                      const sucesso = await deleteAssunto(assuntoExcluindo.id)
-                      if (sucesso) {
-                        await carregarAssuntos()
-                        setShowDeleteAssuntoModal(false)
-                        setAssuntoExcluindo(null)
-                      }
-                    } catch (error: any) {
-                      alert(error.message || 'Erro ao excluir assunto.')
-                    }
-                    setLoading(false)
-                  }}
-                  disabled={assuntoExcluindo.questoes_count > 0 || loading}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+      />              
       </DashboardLayout>
     </ProtectedRoute>
   )

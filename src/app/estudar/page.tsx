@@ -6,6 +6,7 @@ import { DashboardLayout } from '@/components/DashboardLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/components/AuthProvider'
 import { ModoEstudo } from '@/components/ModoEstudo'
+import { SeletorAssuntos } from '@/components/SeletorAssuntos'
 import { getQuestoesParaEstudo, getEstatisticasEstudo, QuestaoEstudo } from '@/lib/estudo'
 import { getMaterias, getMateriasComEstatisticas } from '@/lib/materias'
 import { getTags, getQuestoesPorTags } from '@/lib/tags'
@@ -32,12 +33,15 @@ interface ResultadoSessao {
 interface ConfiguracaoSessao {
   materiaId?: string
   tagIds: string[]
+  assuntoIds: string[] // NOVO
   numeroQuestoes: number | 'todas'
   modoEstudo: 'normal' | 'revisao' | 'rapido' | 'aleatorio'
   salvarHistorico: boolean
-  assunto?: string
   dificuldade?: 'facil' | 'medio' | 'dificil'
+  anoProva?: number // NOVO
+  banca?: string // NOVO
 }
+
 
 export default function EstudarPage() {
   const { isAdmin } = useAuth()
@@ -50,6 +54,7 @@ export default function EstudarPage() {
   const [loading, setLoading] = useState(false)
   const [configuracao, setConfiguracao] = useState<ConfiguracaoSessao>({
     tagIds: [],
+    assuntoIds: [], // NOVO
     numeroQuestoes: 10,
     modoEstudo: 'normal',
     salvarHistorico: true
@@ -275,11 +280,7 @@ export default function EstudarPage() {
       }
 
       // ADICIONAR AQUI OS NOVOS FILTROS
-      // Filtrar por assunto se selecionado
-      if (configuracao.assunto) {
-        query = query.eq('assunto', configuracao.assunto)
-      }
-
+    
       // Filtrar por dificuldade se selecionada
       if (configuracao.dificuldade) {
         query = query.eq('dificuldade', configuracao.dificuldade)
@@ -324,11 +325,21 @@ export default function EstudarPage() {
       // Buscar por tags
       const questoesPorTags = await getQuestoesPorTags(configuracao.tagIds)
       if (questoesPorTags.length > 0) {
-        questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, questoesPorTags)
+        questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, questoesPorTags, {
+          assuntoIds: configuracao.assuntoIds,
+          dificuldade: configuracao.dificuldade,
+          anoProva: configuracao.anoProva,
+          banca: configuracao.banca
+        })
       }
     } else {
       // Buscar normalmente
-      questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite)
+      questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, undefined, {
+        assuntoIds: configuracao.assuntoIds,
+        dificuldade: configuracao.dificuldade,
+        anoProva: configuracao.anoProva,
+        banca: configuracao.banca
+      })
     }
     
     console.log('Questões encontradas:', questoesData)
@@ -711,6 +722,20 @@ export default function EstudarPage() {
                 </select>
               </div>
 
+              {/* Seleção de Assuntos */}
+              {configuracao.materiaId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Assuntos Específicos (opcional)
+                  </label>
+                  <SeletorAssuntos
+                    materiaId={configuracao.materiaId}
+                    assuntosSelecionados={configuracao.assuntoIds}
+                    onChange={(assuntos) => setConfiguracao({...configuracao, assuntoIds: assuntos})}
+                  />
+                </div>
+              )}
+
               {/* Seleção de Tags */}
               {tags.length > 0 && (
                 <div>
@@ -752,27 +777,6 @@ export default function EstudarPage() {
                   </div>
                 </div>
               )}
-
-                            {/* Seleção de Assunto */}
-                            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Filtrar por Assunto (opcional)
-                </label>
-                <select
-                  value={configuracao.assunto || ''}
-                  onChange={(e) => setConfiguracao({...configuracao, assunto: e.target.value || undefined})}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Todos os assuntos</option>
-                  <option value="Direito Constitucional">📜 Direito Constitucional</option>
-                  <option value="Direito Administrativo">🏛️ Direito Administrativo</option>
-                  <option value="Direito Penal">⚖️ Direito Penal</option>
-                  <option value="Português">📝 Português</option>
-                  <option value="Raciocínio Lógico">🧮 Raciocínio Lógico</option>
-                  <option value="Informática">💻 Informática</option>
-                </select>
-              </div>
-
               {/* Seleção de Dificuldade */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -790,59 +794,37 @@ export default function EstudarPage() {
                 </select>
               </div>
 
-              {/* Número de Questões */}
+              {/* Número de Questões */}  
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Número de Questões
                 </label>
-                <div className="space-y-3">
-                  {/* Opções rápidas */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {[5, 10, 15, 20].map((num) => (
-                      <button
-                        key={num}
-                        onClick={() => setConfiguracao({...configuracao, numeroQuestoes: num})}
-                        className={`px-3 py-2 text-sm rounded-lg transition-colors ${
-                          configuracao.numeroQuestoes === num
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        {num}
-                      </button>
-                    ))}
-                    
-                    <button
-                      onClick={() => setConfiguracao({...configuracao, numeroQuestoes: 'todas'})}
-                      className={`px-3 py-2 text-sm rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                        configuracao.numeroQuestoes === 'todas'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      <Infinity className="h-3 w-3" />
-                      Todas
-                    </button>
-                  </div>
-
-                  {/* Input customizado */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Ou digite:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="1000"
-                      value={typeof configuracao.numeroQuestoes === 'number' ? configuracao.numeroQuestoes : ''}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value)
-                        if (value > 0) {
-                          setConfiguracao({...configuracao, numeroQuestoes: value})
-                        }
-                      }}
-                      className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Ex: 30"
-                    />
-                  </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={typeof configuracao.numeroQuestoes === 'number' ? configuracao.numeroQuestoes : ''}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value)
+                      if (value > 0) {
+                        setConfiguracao({...configuracao, numeroQuestoes: value})
+                      }
+                    }}
+                    className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: 20"
+                  />
+                  <span className="text-sm text-gray-600 dark:text-gray-400">questões</span>
+                  <button
+                    onClick={() => setConfiguracao({...configuracao, numeroQuestoes: 'todas'})}
+                    className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                      configuracao.numeroQuestoes === 'todas'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Todas
+                  </button>
                 </div>
               </div>
 
@@ -877,8 +859,20 @@ export default function EstudarPage() {
                     ? materias.find(m => m.id === configuracao.materiaId)?.nome 
                     : 'Todas as matérias'
                   }</p>
+                  {configuracao.assuntoIds.length > 0 && (
+                    <p>• Assuntos: {configuracao.assuntoIds.length} selecionados</p>
+                  )}
                   {configuracao.tagIds.length > 0 && (
                     <p>• Tags: {configuracao.tagIds.length} selecionadas</p>
+                  )}
+                  {configuracao.dificuldade && (
+                    <p>• Dificuldade: {configuracao.dificuldade}</p>
+                  )}
+                  {configuracao.anoProva && (
+                    <p>• Ano: {configuracao.anoProva}</p>
+                  )}
+                  {configuracao.banca && (
+                    <p>• Banca: {configuracao.banca}</p>
                   )}
                   <p>• Questões: {configuracao.numeroQuestoes === 'todas' ? 'Todas disponíveis' : configuracao.numeroQuestoes}</p>
                   {isAdmin && !configuracao.salvarHistorico && (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Search, ArrowLeft, CheckCircle, XCircle, AlertCircle, Loader2, Upload, Edit, Trash2, Copy, MoreVertical, Filter, Tag as TagIcon, BarChart3, Target, BookOpen, TrendingUp, Eye, Play, X } from 'lucide-react'
+import { Plus, Search, ArrowLeft, CheckCircle, XCircle, AlertCircle, Loader2, Upload, Edit, Trash2, Copy, MoreVertical, Filter, Tag as TagIcon, BarChart3, Target, BookOpen, TrendingUp, Eye, Play, X, Settings } from 'lucide-react'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/components/AuthProvider'
@@ -16,15 +16,19 @@ import { getTags, getTagsComContagem, type Tag } from '@/lib/tags'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { EnunciadoFormatado } from '@/components/EnunciadoFormatado'
+import { getAssuntos, createAssunto, getAssuntosPorMateria } from '@/lib/assuntos'
 
 interface QuestaoComDados {
   id: string
+  materia_id: string
   enunciado: string
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
   created_at: string
+  assunto_id?: string
   alternativas?: any[]
   materia?: { nome: string }
+  assunto?: { id: string; nome: string; cor: string }
   tags?: Tag[]
   estatisticas?: {
     total_respostas: number
@@ -60,6 +64,20 @@ function QuestoesContent() {
   const [showExclusao, setShowExclusao] = useState<string | null>(null)
   const [menuAberto, setMenuAberto] = useState<string | null>(null)
   const [estatisticasGerais, setEstatisticasGerais] = useState<EstatisticasGerais | null>(null)
+  const [assuntos, setAssuntos] = useState<any[]>([])
+  const [filtroAssunto, setFiltroAssunto] = useState<'todos' | 'sem_assunto'>('todos')
+  const [questoesSemAssunto, setQuestoesSemAssunto] = useState(0)
+  const [showCriarAssunto, setShowCriarAssunto] = useState(false)
+  const [novoAssunto, setNovoAssunto] = useState({
+    nome: '',
+    descricao: '',
+    cor: '#3B82F6'
+  })
+  const [showGerenciarAssuntos, setShowGerenciarAssuntos] = useState(false)
+  const [assuntoEditando, setAssuntoEditando] = useState<any>(null)
+  const [showEditarAssunto, setShowEditarAssunto] = useState(false)
+  const [showExcluirAssunto, setShowExcluirAssunto] = useState(false)
+  const [assuntoExcluindo, setAssuntoExcluindo] = useState<any>(null)
 
   useEffect(() => {
     carregarDados()
@@ -68,11 +86,13 @@ function QuestoesContent() {
   const carregarDados = async () => {
     setLoading(true)
     
-    const [materiasData, tagsData] = await Promise.all([
+    const [materiasData, tagsData, assuntosData] = await Promise.all([
       getMaterias(),
-      getTagsComContagem()
+      getTagsComContagem(),
+      getAssuntos()
     ])
     
+    setAssuntos(assuntosData)
     setMaterias(materiasData)
     setTags(tagsData)
 
@@ -95,6 +115,73 @@ function QuestoesContent() {
     }
     
     setLoading(false)
+  }
+
+  const editarAssunto = async (assunto: any) => {
+    try {
+      const { error } = await supabase
+        .from('assuntos')
+        .update({
+          nome: assunto.nome,
+          descricao: assunto.descricao,
+          cor: assunto.cor
+        })
+        .eq('id', assunto.id)
+  
+      if (error) {
+        console.error('Erro ao editar assunto:', error)
+        alert('Erro ao editar assunto.')
+        return false
+      }
+  
+      await carregarDados()
+      return true
+    } catch (error) {
+      console.error('Erro inesperado ao editar assunto:', error)
+      alert('Erro inesperado ao editar assunto.')
+      return false
+    }
+  }
+  
+  const excluirAssunto = async (assuntoId: string) => {
+    try {
+      // Verificar se há questões vinculadas
+      const { data: questoes, error: questoesError } = await supabase
+        .from('questoes')
+        .select('id')
+        .eq('assunto_id', assuntoId)
+        .limit(1)
+  
+      if (questoesError) {
+        console.error('Erro ao verificar questões:', questoesError)
+        alert('Erro ao verificar questões vinculadas.')
+        return false
+      }
+  
+      if (questoes && questoes.length > 0) {
+        alert('Não é possível excluir um assunto que possui questões associadas.')
+        return false
+      }
+  
+      // Se não há questões, pode excluir
+      const { error } = await supabase
+        .from('assuntos')
+        .delete()
+        .eq('id', assuntoId)
+  
+      if (error) {
+        console.error('Erro ao excluir assunto:', error)
+        alert('Erro ao excluir assunto.')
+        return false
+      }
+  
+      await carregarDados()
+      return true
+    } catch (error) {
+      console.error('Erro inesperado ao excluir assunto:', error)
+      alert('Erro inesperado ao excluir assunto.')
+      return false
+    }
   }
 
   const carregarTodasQuestoes = async (): Promise<QuestaoComDados[]> => {
@@ -207,13 +294,16 @@ function QuestoesContent() {
     const matchBusca = questao.enunciado.toLowerCase().includes(busca.toLowerCase()) ||
                       questao.materia?.nome.toLowerCase().includes(busca.toLowerCase()) ||
                       questao.tags?.some(tag => tag.nome.toLowerCase().includes(busca.toLowerCase()))
-
+  
     const matchTipo = filtroTipo === 'todas' || questao.tipo === filtroTipo
-
+  
     const matchTags = filtroTags.length === 0 || 
                      (questao.tags && questao.tags.some(tag => filtroTags.includes(tag.id)))
-
-    return matchBusca && matchTipo && matchTags
+  
+    const matchAssunto = filtroAssunto === 'todos' || 
+                        (filtroAssunto === 'sem_assunto' && !questao.assunto_id)
+  
+    return matchBusca && matchTipo && matchTags && matchAssunto
   })
 
   const getIconeStatus = (questao: QuestaoComDados) => {
@@ -644,6 +734,16 @@ function QuestoesContent() {
                 >
                   Múltipla Escolha
                 </button>
+                <button
+                onClick={() => setFiltroAssunto(filtroAssunto === 'sem_assunto' ? 'todos' : 'sem_assunto')}
+                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                  filtroAssunto === 'sem_assunto'
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Sem Assunto
+              </button>
               </div>
 
               {/* Ações admin */}
@@ -663,6 +763,20 @@ function QuestoesContent() {
                     <Upload className="h-4 w-4" />
                     Importar
                   </button>
+                  <button
+                  onClick={() => setShowCriarAssunto(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Assunto
+                </button>
+                <button
+                  onClick={() => setShowGerenciarAssuntos(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  <Settings className="h-4 w-4" />
+                  Gerenciar
+                </button>
                 </div>
               )}
 
@@ -770,6 +884,46 @@ function QuestoesContent() {
                               {tag.nome}
                             </span>
                           ))}
+
+                          {/* Assunto da questão */}
+                          {isAdmin && (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={questao.assunto_id || ''}
+                                onChange={async (e) => {
+                                  const assuntoId = e.target.value || null
+                                  const { error } = await supabase
+                                    .from('questoes')
+                                    .update({ assunto_id: assuntoId })
+                                    .eq('id', questao.id)
+                                  
+                                  if (!error) {
+                                    await carregarDados() // Recarregar para atualizar a interface
+                                  }
+                                }}
+                                className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              >
+                                <option value="">Sem assunto</option>
+                                {assuntos
+                                  .filter(a => a.materia_id === questao.materia_id || a.materia_id === materiaSelecionada?.id)
+                                  .map(assunto => (
+                                    <option key={assunto.id} value={assunto.id}>
+                                      {assunto.nome}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Mostrar assunto atual se definido */}
+                          {questao.assunto && (
+                            <span
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-white"
+                              style={{ backgroundColor: questao.assunto.cor }}
+                            >
+                              {questao.assunto.nome}
+                            </span>
+                          )}
 
                           {/* Estatísticas de performance */}
                           {questao.estatisticas && questao.estatisticas.total_respostas > 0 && (
@@ -987,6 +1141,352 @@ function QuestoesContent() {
             onCancelar={() => setShowExclusao(null)}
           />
         )}
+
+        {/* Modal para criar assunto */}
+        {showCriarAssunto && materiaSelecionada && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-md mx-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Criar Novo Assunto
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Matéria
+                  </label>
+                  <div className="px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-900 dark:text-white">
+                    {materiaSelecionada.nome}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Nome do Assunto *
+                  </label>
+                  <input
+                    type="text"
+                    value={novoAssunto.nome}
+                    onChange={(e) => setNovoAssunto({...novoAssunto, nome: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: Direitos Fundamentais"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Descrição (opcional)
+                  </label>
+                  <textarea
+                    value={novoAssunto.descricao}
+                    onChange={(e) => setNovoAssunto({...novoAssunto, descricao: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={2}
+                    placeholder="Descrição do assunto..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Cor
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={novoAssunto.cor}
+                      onChange={(e) => setNovoAssunto({...novoAssunto, cor: e.target.value})}
+                      className="w-12 h-8 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={novoAssunto.cor}
+                      onChange={(e) => setNovoAssunto({...novoAssunto, cor: e.target.value})}
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="#3B82F6"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowCriarAssunto(false)
+                    setNovoAssunto({ nome: '', descricao: '', cor: '#3B82F6' })
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!novoAssunto.nome.trim()) return
+                    const assunto = await createAssunto({
+                      materia_id: materiaSelecionada.id,
+                      nome: novoAssunto.nome,
+                      descricao: novoAssunto.descricao,
+                      cor: novoAssunto.cor
+                    })
+                    if (assunto) {
+                      await carregarDados()
+                      setShowCriarAssunto(false)
+                      setNovoAssunto({ nome: '', descricao: '', cor: '#3B82F6' })
+                    }
+                  }}
+                  disabled={!novoAssunto.nome.trim()}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Criar Assunto
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para gerenciar assuntos */}
+        {showGerenciarAssuntos && materiaSelecionada && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Gerenciar Assuntos - {materiaSelecionada.nome}
+                </h2>
+                <button
+                  onClick={() => setShowGerenciarAssuntos(false)}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto max-h-[60vh]">
+                {assuntos.filter(a => a.materia_id === materiaSelecionada.id).length === 0 ? (
+                  <div className="text-center py-12">
+                    <BookOpen className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                      Nenhum assunto cadastrado
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-4">
+                      Crie o primeiro assunto para esta matéria.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setShowGerenciarAssuntos(false)
+                        setShowCriarAssunto(true)
+                      }}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      Criar Primeiro Assunto
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {assuntos
+                      .filter(a => a.materia_id === materiaSelecionada.id)
+                      .map((assunto) => {
+                        const questoesDoAssunto = questoes.filter(q => q.assunto_id === assunto.id).length
+                        
+                        return (
+                          <div key={assunto.id} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-3 flex-1">
+                                <div 
+                                  className="w-4 h-4 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: assunto.cor }}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                                    {assunto.nome}
+                                  </h3>
+                                  {assunto.descricao && (
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                                      {assunto.descricao}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full flex-shrink-0">
+                                {questoesDoAssunto} questões
+                              </span>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setAssuntoEditando({...assunto})
+                                  setShowEditarAssunto(true)
+                                }}
+                                className="flex-1 px-3 py-2 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200 transition-colors flex items-center justify-center gap-1"
+                              >
+                                <Edit className="h-3 w-3" />
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setAssuntoExcluindo(assunto)
+                                  setShowExcluirAssunto(true)
+                                }}
+                                disabled={questoesDoAssunto > 0}
+                                className="px-3 py-2 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={questoesDoAssunto > 0 ? 'Não é possível excluir assunto com questões' : 'Excluir assunto'}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Excluir
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => {
+            setShowGerenciarAssuntos(false)
+            setShowCriarAssunto(true)
+          }}
+          className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          Criar Novo Assunto
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Modal para editar assunto */}
+{showEditarAssunto && assuntoEditando && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-md mx-4">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        Editar Assunto
+      </h2>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Nome do Assunto *
+          </label>
+          <input
+            type="text"
+            value={assuntoEditando.nome}
+            onChange={(e) => setAssuntoEditando({...assuntoEditando, nome: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Ex: Direitos Fundamentais"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Descrição (opcional)
+          </label>
+          <textarea
+            value={assuntoEditando.descricao || ''}
+            onChange={(e) => setAssuntoEditando({...assuntoEditando, descricao: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={2}
+            placeholder="Descrição do assunto..."
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Cor
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={assuntoEditando.cor}
+              onChange={(e) => setAssuntoEditando({...assuntoEditando, cor: e.target.value})}
+              className="w-12 h-8 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
+            />
+            <input
+              type="text"
+              value={assuntoEditando.cor}
+              onChange={(e) => setAssuntoEditando({...assuntoEditando, cor: e.target.value})}
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="#3B82F6"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => {
+            setShowEditarAssunto(false)
+            setAssuntoEditando(null)
+          }}
+          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={async () => {
+            if (!assuntoEditando.nome.trim()) return
+            const sucesso = await editarAssunto(assuntoEditando)
+            if (sucesso) {
+              setShowEditarAssunto(false)
+              setAssuntoEditando(null)
+            }
+          }}
+          disabled={!assuntoEditando.nome.trim()}
+          className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Salvar Alterações
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Modal para excluir assunto */}
+{showExcluirAssunto && assuntoExcluindo && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-md mx-4">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-full">
+          <Trash2 className="h-6 w-6 text-red-600" />
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Excluir Assunto
+        </h2>
+      </div>
+      
+      <p className="text-gray-600 dark:text-gray-400 mb-2">
+        Tem certeza que deseja excluir o assunto:
+      </p>
+      <p className="font-semibold text-gray-900 dark:text-white mb-4">
+        "{assuntoExcluindo.nome}"
+      </p>
+      
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg mb-4">
+        <p className="text-sm text-yellow-800 dark:text-yellow-300">
+          ⚠️ Esta ação não pode ser desfeita.
+        </p>
+      </div>
+      
+      <div className="flex gap-3">
+        <button
+          onClick={() => {
+            setShowExcluirAssunto(false)
+            setAssuntoExcluindo(null)
+          }}
+          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={async () => {
+            const sucesso = await excluirAssunto(assuntoExcluindo.id)
+            if (sucesso) {
+              setShowExcluirAssunto(false)
+              setAssuntoExcluindo(null)
+            }
+          }}
+          className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
         {/* Overlay para fechar menu */}
         {menuAberto && (

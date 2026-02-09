@@ -29,6 +29,13 @@ export interface Questao {
   resposta_certo_errado?: boolean
   created_at: string
   materia?: Materia
+  // CAMPOS NOVOS ADICIONADOS:
+  dificuldade?: 'facil' | 'medio' | 'dificil'
+  ano_prova?: number
+  banca?: string
+  assunto_id?: string
+  imagem_url?: string
+  imagem_nome?: string
 }
 
 export interface Alternativa {
@@ -103,4 +110,17 @@ export interface TempoResposta {
   usuario_id: string
   tempo_segundos: number
   created_at: string
+}
+
+export interface Assunto {
+  id: string
+  materia_id: string
+  nome: string
+  descricao?: string
+  cor: string
+  ativo: boolean
+  ordem: number
+  created_at: string
+  materia?: { nome: string }
+  questoes_count?: number
 }

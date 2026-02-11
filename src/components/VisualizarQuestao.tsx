@@ -12,21 +12,21 @@ interface VisualizarQuestaoProps {
 }
 
 interface QuestaoCompleta {
+  id: string
+  materia_id: string
+  enunciado: string
+  tipo: 'certo_errado' | 'multipla_escolha'
+  explicacao?: string
+  resposta_certo_errado?: boolean | null // ADICIONADO | null
+  created_at: string
+  materia?: { nome: string }
+  alternativas?: Array<{
     id: string
-    materia_id: string
-    enunciado: string
-    tipo: 'certo_errado' | 'multipla_escolha'
-    explicacao?: string
-    resposta_certo_errado?: boolean
-    created_at: string
-    materia?: { nome: string }
-    alternativas?: Array<{
-      id: string
-      questao_id: string
-      texto: string
-      correta: boolean
-    }>
-  }
+    questao_id: string
+    texto: string
+    correta: boolean
+  }>
+}
 
 export function VisualizarQuestao({ questaoId, isOpen, onClose }: VisualizarQuestaoProps) {
   const [questao, setQuestao] = useState<QuestaoCompleta | null>(null)

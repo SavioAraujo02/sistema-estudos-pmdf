@@ -44,7 +44,7 @@ export function VisualizarQuestao({ questaoId, isOpen, onClose }: VisualizarQues
     setLoading(true)
     try {
       const dados = await getQuestaoComAlternativas(questaoId)
-      setQuestao(dados)
+      setQuestao(dados as any)
     } catch (error) {
       console.error('Erro ao carregar questão:', error)
     } finally {

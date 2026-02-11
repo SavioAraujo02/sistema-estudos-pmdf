@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { Questao, Alternativa } from '@/types/database'
+import { QuestaoCompleta } from '@/types/questao'
 
 // Interface específica para alternativas do banco
 interface AlternativaBanco {
@@ -9,25 +10,6 @@ interface AlternativaBanco {
   correta: boolean
 }
 
-// Interface para questão completa do banco
-interface QuestaoCompleta {
-  id: string
-  materia_id: string
-  enunciado: string
-  tipo: 'certo_errado' | 'multipla_escolha'
-  explicacao?: string
-  resposta_certo_errado?: boolean | null
-  dificuldade?: string
-  ano_prova?: number
-  banca?: string
-  assunto_id?: string
-  imagem_url?: string
-  imagem_nome?: string
-  created_at: string
-  alternativas?: AlternativaBanco[]
-  materia?: { nome: string }
-  assunto?: { id: string; nome: string; cor: string }
-}
 
 export async function getQuestoesByMateria(materiaId: string) {
   const { data, error } = await supabase

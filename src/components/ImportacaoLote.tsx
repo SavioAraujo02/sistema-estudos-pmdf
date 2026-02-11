@@ -313,144 +313,146 @@ Comentários: O material estabelece claramente que "Técnica responde à pergunt
     )
   }
 
-  // ETAPA 2: SELEÇÃO DE ASSUNTO
-  if (etapa === 'assunto') {
-    const sucessos = questoes.filter(q => q.status !== 'erro').length
+  {/* ETAPA 2: SELEÇÃO DE ASSUNTO */}
+if (etapa === 'assunto') {
+  const sucessos = questoes.filter(q => q.status !== 'erro').length
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Selecionar Assunto
-              </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {sucessos} questões processadas • {materiaNome}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Selecionar Assunto
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {sucessos} questões processadas • {materiaNome}
+            </p>
           </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          {/* Conteúdo */}
-          <div className="p-6 space-y-6">
+        {/* Conteúdo com scroll */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="p-6 pb-4 flex-shrink-0">
             <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <Tag className="h-5 w-5 text-yellow-600" />
                 <h3 className="font-medium text-yellow-900 dark:text-yellow-300">
                   Associar a um Assunto (Opcional)
                 </h3>
-                </div>
+              </div>
               <p className="text-sm text-yellow-800 dark:text-yellow-400">
                 Você pode associar todas as questões a um assunto específico da matéria ou deixar sem assunto.
               </p>
             </div>
+          </div>
 
-            {/* Seletor de assunto */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                Escolha um assunto:
-              </label>
-              
-              {carregandoAssuntos ? (
-                <div className="flex items-center justify-center p-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                  <span className="ml-2 text-gray-600 dark:text-gray-400">Carregando assuntos...</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Opção "Sem assunto" */}
-                  <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 cursor-pointer transition-colors">
+          {/* Seletor de assunto com scroll */}
+          <div className="flex-1 px-6 overflow-hidden">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Escolha um assunto:
+            </label>
+            
+            {carregandoAssuntos ? (
+              <div className="flex items-center justify-center p-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span className="ml-2 text-gray-600 dark:text-gray-400">Carregando assuntos...</span>
+              </div>
+            ) : (
+              <div className="h-80 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-3 bg-gray-50 dark:bg-gray-900">
+                {/* Opção "Sem assunto" */}
+                <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 cursor-pointer transition-colors bg-white dark:bg-gray-800">
+                  <input
+                    type="radio"
+                    name="assunto"
+                    value=""
+                    checked={assuntoSelecionado === ''}
+                    onChange={(e) => setAssuntoSelecionado(e.target.value)}
+                    className="mr-3"
+                  />
+                  <div>
+                    <div className="font-medium text-gray-900 dark:text-white">
+                      📝 Sem assunto específico
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      As questões ficarão apenas na matéria
+                    </div>
+                  </div>
+                </label>
+
+                {/* Lista de assuntos */}
+                {assuntos.map((assunto) => (
+                  <label
+                    key={assunto.id}
+                    className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 cursor-pointer transition-colors bg-white dark:bg-gray-800"
+                  >
                     <input
                       type="radio"
                       name="assunto"
-                      value=""
-                      checked={assuntoSelecionado === ''}
+                      value={assunto.id}
+                      checked={assuntoSelecionado === assunto.id}
                       onChange={(e) => setAssuntoSelecionado(e.target.value)}
                       className="mr-3"
                     />
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">
-                        📝 Sem assunto específico
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        As questões ficarão apenas na matéria
+                    <div className="flex items-center gap-3 flex-1">
+                      <div
+                        className="w-4 h-4 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: assunto.cor }}
+                      />
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {assunto.nome}
+                        </div>
+                        {assunto.descricao && (
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            {assunto.descricao}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </label>
+                ))}
 
-                  {/* Lista de assuntos */}
-                  {assuntos.map((assunto) => (
-                    <label
-                      key={assunto.id}
-                      className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="radio"
-                        name="assunto"
-                        value={assunto.id}
-                        checked={assuntoSelecionado === assunto.id}
-                        onChange={(e) => setAssuntoSelecionado(e.target.value)}
-                        className="mr-3"
-                      />
-                      <div className="flex items-center gap-3 flex-1">
-                        <div
-                          className="w-4 h-4 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: assunto.cor }}
-                        />
-                        <div>
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {assunto.nome}
-                          </div>
-                          {assunto.descricao && (
-                            <div className="text-sm text-gray-600 dark:text-gray-400">
-                              {assunto.descricao}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
+                {assuntos.length === 0 && (
+                  <div className="text-center p-8 text-gray-500 dark:text-gray-400">
+                    <Tag className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhum assunto cadastrado para esta matéria</p>
+                    <p className="text-sm mt-1">As questões ficarão apenas na matéria</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
-                  {assuntos.length === 0 && (
-                    <div className="text-center p-8 text-gray-500 dark:text-gray-400">
-                      <Tag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhum assunto cadastrado para esta matéria</p>
-                      <p className="text-sm mt-1">As questões ficarão apenas na matéria</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Botões */}
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => setEtapa('entrada')}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                Voltar
-              </button>
-              
-              <button
-                onClick={prosseguirParaRevisao}
-                className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <CheckCircle className="h-4 w-4" />
-                Continuar para Revisão
-              </button>
-            </div>
+          {/* Botões fixos no bottom */}
+          <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <button
+              onClick={() => setEtapa('entrada')}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Voltar
+            </button>
+            
+            <button
+              onClick={prosseguirParaRevisao}
+              className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <CheckCircle className="h-4 w-4" />
+              Continuar para Revisão
+            </button>
           </div>
         </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   // ETAPA 3: REVISÃO
   if (etapa === 'revisao') {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, Edit, Play, FileText, CheckCircle, XCircle } from 'lucide-react'
 import { getQuestaoComAlternativas } from '@/lib/questoes'
 import { EnunciadoFormatado } from './EnunciadoFormatado'
+import { QuestaoCompleta } from '@/types/questao'
 
 interface VisualizarQuestaoProps {
   questaoId: string | null
@@ -11,22 +12,6 @@ interface VisualizarQuestaoProps {
   onClose: () => void
 }
 
-interface QuestaoCompleta {
-  id: string
-  materia_id: string
-  enunciado: string
-  tipo: 'certo_errado' | 'multipla_escolha'
-  explicacao?: string
-  resposta_certo_errado?: boolean | null // ADICIONADO | null
-  created_at: string
-  materia?: { nome: string }
-  alternativas?: Array<{
-    id: string
-    questao_id: string
-    texto: string
-    correta: boolean
-  }>
-}
 
 export function VisualizarQuestao({ questaoId, isOpen, onClose }: VisualizarQuestaoProps) {
   const [questao, setQuestao] = useState<QuestaoCompleta | null>(null)
@@ -44,7 +29,7 @@ export function VisualizarQuestao({ questaoId, isOpen, onClose }: VisualizarQues
     setLoading(true)
     try {
       const dados = await getQuestaoComAlternativas(questaoId)
-      setQuestao(dados as any)
+      setQuestao(dados)
     } catch (error) {
       console.error('Erro ao carregar questão:', error)
     } finally {

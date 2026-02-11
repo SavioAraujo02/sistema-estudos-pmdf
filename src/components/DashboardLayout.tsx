@@ -5,9 +5,9 @@ import { Menu, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from './ThemeToggle'
+import { Notificacoes } from './Notificacoes'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -76,7 +76,10 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
               </h1>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              {/* NOVO: Componente de Notificações */}
+              <Notificacoes />
+              
               <ThemeToggle />
               
               <button

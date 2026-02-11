@@ -16,8 +16,17 @@ interface QuestaoCompleta {
   enunciado: string
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
+  resposta_certo_errado?: boolean | null
+  dificuldade?: string
+  ano_prova?: number
+  banca?: string
+  assunto_id?: string
+  imagem_url?: string
+  imagem_nome?: string
   created_at: string
   alternativas?: AlternativaBanco[]
+  materia?: { nome: string }
+  assunto?: { id: string; nome: string; cor: string }
 }
 
 export async function getQuestoesByMateria(materiaId: string) {
@@ -45,55 +54,64 @@ export async function createQuestao(questaoData: {
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
   alternativas?: { texto: string; correta: boolean }[]
-  assunto?: string
-  subtopico?: string
+  assunto_id?: string
   dificuldade?: 'facil' | 'medio' | 'dificil'
   ano_prova?: number
   banca?: string
+  resposta_certo_errado?: boolean | null
+  imagem_url?: string
+  imagem_nome?: string
 }) {
-  // Criar a questão
-  const { data: questao, error: questaoError } = await supabase
-  .from('questoes')
-  .insert([{
-    materia_id: questaoData.materia_id,
-    enunciado: questaoData.enunciado,
-    tipo: questaoData.tipo,
-    explicacao: questaoData.explicacao,
-    assunto: questaoData.assunto,
-    subtopico: questaoData.subtopico,
-    dificuldade: questaoData.dificuldade,
-    ano_prova: questaoData.ano_prova,
-    banca: questaoData.banca
-  }])
-    .select()
-    .single()
+  try {
+    // Criar a questão
+    const { data: questao, error: questaoError } = await supabase
+      .from('questoes')
+      .insert([{
+        materia_id: questaoData.materia_id,
+        enunciado: questaoData.enunciado,
+        tipo: questaoData.tipo,
+        explicacao: questaoData.explicacao,
+        assunto_id: questaoData.assunto_id,
+        dificuldade: questaoData.dificuldade,
+        ano_prova: questaoData.ano_prova,
+        banca: questaoData.banca,
+        resposta_certo_errado: questaoData.resposta_certo_errado,
+        imagem_url: questaoData.imagem_url,
+        imagem_nome: questaoData.imagem_nome
+      }])
+      .select()
+      .single()
 
-  if (questaoError) {
-    console.error('Erro ao criar questão:', questaoError)
-    return null
-  }
-
-  // Se for múltipla escolha, criar as alternativas
-  if (questaoData.tipo === 'multipla_escolha' && questaoData.alternativas) {
-    const alternativasData = questaoData.alternativas.map(alt => ({
-      questao_id: questao.id,
-      texto: alt.texto,
-      correta: alt.correta
-    }))
-
-    const { error: alternativasError } = await supabase
-      .from('alternativas')
-      .insert(alternativasData)
-
-    if (alternativasError) {
-      console.error('Erro ao criar alternativas:', alternativasError)
-      // Deletar a questão se não conseguir criar as alternativas
-      await supabase.from('questoes').delete().eq('id', questao.id)
+    if (questaoError) {
+      console.error('Erro ao criar questão:', questaoError)
       return null
     }
-  }
 
-  return questao
+    // Se for múltipla escolha, criar as alternativas
+    if (questaoData.tipo === 'multipla_escolha' && questaoData.alternativas) {
+      const alternativasData = questaoData.alternativas.map(alt => ({
+        questao_id: questao.id,
+        texto: alt.texto,
+        correta: alt.correta
+      }))
+
+      const { error: alternativasError } = await supabase
+        .from('alternativas')
+        .insert(alternativasData)
+
+      if (alternativasError) {
+        console.error('Erro ao criar alternativas:', alternativasError)
+        // Deletar a questão se não conseguir criar as alternativas
+        await supabase.from('questoes').delete().eq('id', questao.id)
+        return null
+      }
+    }
+
+    return questao
+  } catch (error) {
+    console.error('Erro inesperado ao criar questão:', error)
+    return null
+  }
 }
 
 export async function getQuestaoComAlternativas(questaoId: string): Promise<QuestaoCompleta | null> {
@@ -102,7 +120,8 @@ export async function getQuestaoComAlternativas(questaoId: string): Promise<Ques
     .select(`
       *,
       alternativas(*),
-      materia:materias(nome)
+      materia:materias(nome),
+      assunto:assuntos(id, nome, cor)
     `)
     .eq('id', questaoId)
     .single()
@@ -120,6 +139,11 @@ export async function updateQuestao(questaoId: string, questaoData: {
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
   alternativas?: { id?: string; texto: string; correta: boolean }[]
+  resposta_certo_errado?: boolean | null
+  dificuldade?: 'facil' | 'medio' | 'dificil'
+  ano_prova?: number
+  banca?: string
+  assunto_id?: string
 }) {
   try {
     // Atualizar a questão
@@ -128,7 +152,12 @@ export async function updateQuestao(questaoId: string, questaoData: {
       .update({
         enunciado: questaoData.enunciado,
         tipo: questaoData.tipo,
-        explicacao: questaoData.explicacao
+        explicacao: questaoData.explicacao,
+        resposta_certo_errado: questaoData.resposta_certo_errado,
+        dificuldade: questaoData.dificuldade,
+        ano_prova: questaoData.ano_prova,
+        banca: questaoData.banca,
+        assunto_id: questaoData.assunto_id
       })
       .eq('id', questaoId)
       .select()
@@ -334,6 +363,16 @@ export async function criarComentario(questaoId: string, texto: string) {
       return null
     }
 
+    // NOVO: Enviar notificação sobre novo comentário
+    try {
+      const { notificarNovoComentario } = await import('@/lib/notificacoes')
+      await notificarNovoComentario(questaoId, data.id, user.id)
+      console.log('🔔 Notificação de novo comentário enviada')
+    } catch (notifError) {
+      console.error('Erro ao enviar notificação de comentário:', notifError)
+      // Não falhar a criação do comentário por causa da notificação
+    }
+
     return {
       ...data,
       likes_count: 0,
@@ -362,6 +401,8 @@ export async function curtirComentario(comentarioId: string, tipo: 'like' | 'dis
       .eq('usuario_id', user.id)
       .single()
 
+    let novaAcao = false
+
     if (existente) {
       if (existente.tipo === tipo) {
         // Se já curtiu/descurtiu, remover
@@ -378,7 +419,7 @@ export async function curtirComentario(comentarioId: string, tipo: 'like' | 'dis
           .update({ tipo })
           .eq('id', existente.id)
         
-        return !error
+        novaAcao = !error && tipo === 'like' // Só notificar se for like
       }
     } else {
       // Criar novo like/dislike
@@ -390,8 +431,21 @@ export async function curtirComentario(comentarioId: string, tipo: 'like' | 'dis
           tipo
         })
       
-      return !error
+      novaAcao = !error && tipo === 'like' // Só notificar se for like
     }
+
+    // NOVO: Enviar notificação sobre curtida (apenas para likes)
+    if (novaAcao) {
+      try {
+        const { notificarCurtidaComentario } = await import('@/lib/notificacoes')
+        await notificarCurtidaComentario(comentarioId, user.id)
+        console.log('🔔 Notificação de curtida enviada')
+      } catch (notifError) {
+        console.error('Erro ao enviar notificação de curtida:', notifError)
+      }
+    }
+
+    return true
   } catch (error) {
     console.error('Erro ao curtir comentário:', error)
     return false

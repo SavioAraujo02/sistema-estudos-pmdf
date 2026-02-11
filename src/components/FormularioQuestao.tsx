@@ -5,6 +5,8 @@ import { X, Plus, Trash2, Loader2, Wand2, FileText, HelpCircle } from 'lucide-re
 import { createQuestao } from '@/lib/questoes'
 import { parseQuestao, getExemplosFormato } from '@/lib/questaoParser'
 import { UploadImagem } from './UploadImagem'
+import { notificarNovaQuestao } from '@/lib/notificacoes'
+import { supabase } from '@/lib/supabase'
 
 interface FormularioQuestaoProps {
   materiaId: string
@@ -51,13 +53,33 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
       setTipo(questaoParseada.tipo)
       setExplicacao(questaoParseada.explicacao || '')
       
+      // NOVO: Processar resposta de certo/errado automaticamente
+      if (questaoParseada.tipo === 'certo_errado' && questaoParseada.respostaCertoErrado !== undefined) {
+        setRespostaCertoErrado(questaoParseada.respostaCertoErrado)
+        console.log('🎯 Resposta detectada automaticamente:', questaoParseada.respostaCertoErrado ? 'CERTO' : 'ERRADO')
+      }
+      
       if (questaoParseada.alternativas) {
         setAlternativas(questaoParseada.alternativas)
       }
       
-      alert('Questão processada com sucesso! Verifique os dados e salve.')
+      // Mensagem mais informativa
+      if (questaoParseada.tipo === 'certo_errado') {
+        if (questaoParseada.respostaCertoErrado !== undefined) {
+          alert(`Questão processada com sucesso!\n✅ Resposta detectada: ${questaoParseada.respostaCertoErrado ? 'CERTO' : 'ERRADO'}\n\nVerifique os dados e salve.`)
+        } else {
+          alert('Questão processada com sucesso!\n⚠️ Não foi possível detectar a resposta automaticamente.\nDefina se é CERTO ou ERRADO e salve.')
+        }
+      } else {
+        const temGabarito = questaoParseada.alternativas?.some(alt => alt.correta)
+        if (temGabarito) {
+          alert('Questão processada com sucesso!\n✅ Gabarito detectado automaticamente.\n\nVerifique os dados e salve.')
+        } else {
+          alert('Questão processada com sucesso!\n⚠️ Gabarito não detectado.\nMarque a alternativa correta e salve.')
+        }
+      }
     } else {
-      alert('Não foi possível processar o texto. Verifique o formato.')
+      alert('Não foi possível processar o texto.\n\n💡 Dicas:\n• Use "Comentários:" para explicações\n• Para certo/errado: inclua "Certo" ou "Errado" nos comentários\n• Para múltipla escolha: inclua "Gabarito: X" nos comentários')
     }
   }
 
@@ -112,9 +134,9 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
       alert(erro)
       return
     }
-
+  
     setSalvando(true)
-
+  
     try {
       const dadosQuestao = {
         materia_id: materiaId,
@@ -125,18 +147,34 @@ export function FormularioQuestao({ materiaId, materiaNome, onClose, onSuccess }
         alternativas: tipo === 'multipla_escolha' 
           ? alternativas.filter(alt => alt.texto.trim())
           : undefined,
-        assunto: assunto.trim() || undefined,
-        subtopico: subtopico.trim() || undefined,
+        assunto_id: assunto.trim() || undefined,
         dificuldade: dificuldade || undefined,
         ano_prova: anoProva || undefined,
         banca: banca.trim() || undefined,
         imagem_url: imagemUrl,
         imagem_nome: imagemNome
       }
-
+  
       const resultado = await createQuestao(dadosQuestao)
       
       if (resultado) {
+        console.log('✅ Questão criada com sucesso!')
+        
+        // TESTE: Alert para ver se chega aqui
+        alert('Questão criada! Vou tentar enviar notificação...')
+        
+        // NOVO: Enviar notificação sobre nova questão
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            await notificarNovaQuestao(materiaId, resultado.id, user.id)
+            console.log('🔔 Notificação de nova questão enviada')
+          }
+        } catch (error) {
+          console.error('Erro ao enviar notificação:', error)
+          // Não falhar a criação da questão por causa da notificação
+        }
+        
         onSuccess()
         onClose()
       } else {

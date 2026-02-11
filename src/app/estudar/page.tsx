@@ -20,6 +20,8 @@ import {
   temSessaoEmAndamento, 
   getResumoSessao 
 } from '@/lib/progresso'
+import { FiltrosInteligentes } from '@/components/FiltrosInteligentes'
+import { getEstatisticasFiltros } from '@/lib/estudo'
 
 interface ResultadoSessao {
   totalQuestoes: number
@@ -33,13 +35,17 @@ interface ResultadoSessao {
 interface ConfiguracaoSessao {
   materiaId?: string
   tagIds: string[]
-  assuntoIds: string[] // NOVO
+  assuntoIds: string[]
   numeroQuestoes: number | 'todas'
   modoEstudo: 'normal' | 'revisao' | 'rapido' | 'aleatorio'
   salvarHistorico: boolean
   dificuldade?: 'facil' | 'medio' | 'dificil'
-  anoProva?: number // NOVO
-  banca?: string // NOVO
+  anoProva?: number
+  banca?: string
+  // NOVOS FILTROS INTELIGENTES
+  apenasNaoRespondidas?: boolean
+  apenasErradas?: boolean
+  revisaoQuestoesDificeis?: boolean
 }
 
 
@@ -63,6 +69,13 @@ export default function EstudarPage() {
   const [resumoProgresso, setResumoProgresso] = useState<any>(null)
   const [carregandoProgresso, setCarregandoProgresso] = useState(false)
   const [carregandoDados, setCarregandoDados] = useState(true)
+  // NOVOS ESTADOS PARA FILTROS INTELIGENTES
+  const [estatisticasFiltros, setEstatisticasFiltros] = useState({
+    totalQuestoes: 0,
+    naoRespondidas: 0,
+    comErros: 0,
+    dificeis: 0
+  })
   
   // Atualizar salvarHistorico quando modo mudar
   useEffect(() => {
@@ -79,6 +92,21 @@ export default function EstudarPage() {
     }
     inicializar()
   }, [])
+
+  // NOVO: Atualizar estatísticas dos filtros quando matéria mudar
+  useEffect(() => {
+    const atualizarEstatisticasFiltros = async () => {
+      if (configuracao.materiaId) {
+        const stats = await getEstatisticasFiltros(configuracao.materiaId)
+        setEstatisticasFiltros(stats)
+      } else {
+        const stats = await getEstatisticasFiltros()
+        setEstatisticasFiltros(stats)
+      }
+    }
+    
+    atualizarEstatisticasFiltros()
+  }, [configuracao.materiaId])
 
   const filtrarQuestoesRevisao = async (questoes: QuestaoEstudo[]): Promise<QuestaoEstudo[]> => {
     try {
@@ -239,26 +267,33 @@ export default function EstudarPage() {
   }
 
   const carregarDados = async () => {
-    console.log('Carregando dados do estudar...')
-    setCarregandoDados(true)
+  console.log('Carregando dados do estudar...')
+  setCarregandoDados(true)
+  
+  try {
+    const [materiasData, tagsData, statsData] = await Promise.all([
+      getMateriasComEstatisticas(),
+      getTags(),
+      getEstatisticasEstudo()
+    ])
     
-    try {
-      const [materiasData, tagsData, statsData] = await Promise.all([
-        getMateriasComEstatisticas(),
-        getTags(),
-        getEstatisticasEstudo()
-      ])
-      
-      setMaterias(materiasData)
-      setTags(tagsData)
-      setEstatisticas(statsData)
-      console.log('✅ Dados carregados:', { materias: materiasData.length, tags: tagsData.length })
-    } catch (error) {
-      console.error('❌ Erro ao carregar dados:', error)
-    } finally {
-      setCarregandoDados(false)
+    setMaterias(materiasData)
+    setTags(tagsData)
+    setEstatisticas(statsData)
+    
+    // NOVO: Carregar estatísticas dos filtros
+    if (configuracao.materiaId) {
+      const statsFiltros = await getEstatisticasFiltros(configuracao.materiaId)
+      setEstatisticasFiltros(statsFiltros)
     }
+    
+    console.log('✅ Dados carregados:', { materias: materiasData.length, tags: tagsData.length })
+  } catch (error) {
+    console.error('❌ Erro ao carregar dados:', error)
+  } finally {
+    setCarregandoDados(false)
   }
+}
 
   const getQuestoesDisponiveis = async (): Promise<number> => {
     try {
@@ -295,87 +330,95 @@ export default function EstudarPage() {
   }
 
   const iniciarSessao = async () => {
-    setLoading(true)
-    
-    // Salvar progresso da nova sessão
-    console.log('💾 Iniciando nova sessão com progresso...')
-    
-    const questoesDisponiveis = await getQuestoesDisponiveis()
-    console.log('Questões disponíveis:', questoesDisponiveis)
-    
-    if (questoesDisponiveis === 0) {
-      alert('Nenhuma questão encontrada para os critérios selecionados.')
-      setLoading(false)
-      return
-    }
+  setLoading(true)
+  
+  // Salvar progresso da nova sessão
+  console.log('💾 Iniciando nova sessão com progresso...')
+  
+  const questoesDisponiveis = await getQuestoesDisponiveis()
+  console.log('Questões disponíveis:', questoesDisponiveis)
+  
+  if (questoesDisponiveis === 0) {
+    alert('Nenhuma questão encontrada para os critérios selecionados.')
+    setLoading(false)
+    return
+  }
 
-    let limite: number
-    if (configuracao.numeroQuestoes === 'todas') {
-      limite = questoesDisponiveis
-    } else {
-      limite = Math.min(configuracao.numeroQuestoes as number, questoesDisponiveis)
-    }
-    
-    console.log('Iniciando sessão com:', { configuracao, questoesDisponiveis, limite })
-    
-    // Buscar questões baseado na configuração
-    let questoesData: QuestaoEstudo[] = []
+  let limite: number
+  if (configuracao.numeroQuestoes === 'todas') {
+    limite = questoesDisponiveis
+  } else {
+    limite = Math.min(configuracao.numeroQuestoes as number, questoesDisponiveis)
+  }
+  
+  console.log('Iniciando sessão com:', { configuracao, questoesDisponiveis, limite })
+  
+  // Buscar questões baseado na configuração
+  let questoesData: QuestaoEstudo[] = []
 
-    if (configuracao.tagIds.length > 0) {
-      // Buscar por tags
-      const questoesPorTags = await getQuestoesPorTags(configuracao.tagIds)
-      if (questoesPorTags.length > 0) {
-        questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, questoesPorTags, {
-          assuntoIds: configuracao.assuntoIds,
-          dificuldade: configuracao.dificuldade,
-          anoProva: configuracao.anoProva,
-          banca: configuracao.banca
-        })
-      }
-    } else {
-      // Buscar normalmente
-      questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, undefined, {
+  if (configuracao.tagIds.length > 0) {
+    // Buscar por tags
+    const questoesPorTags = await getQuestoesPorTags(configuracao.tagIds)
+    if (questoesPorTags.length > 0) {
+      questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, questoesPorTags, {
         assuntoIds: configuracao.assuntoIds,
         dificuldade: configuracao.dificuldade,
         anoProva: configuracao.anoProva,
-        banca: configuracao.banca
+        banca: configuracao.banca,
+        // NOVOS FILTROS INTELIGENTES
+        apenasNaoRespondidas: configuracao.apenasNaoRespondidas,
+        apenasErradas: configuracao.apenasErradas,
+        revisaoQuestoesDificeis: configuracao.revisaoQuestoesDificeis
       })
     }
-    
-    console.log('Questões encontradas:', questoesData)
-    
-    if (questoesData.length === 0) {
-      alert('Nenhuma questão encontrada para os critérios selecionados.')
-      setLoading(false)
-      return
-    }
-    
-    // Aplicar modo de estudo
-    switch (configuracao.modoEstudo) {
-      case 'aleatorio':
-        // Algoritmo Fisher-Yates para embaralhamento real
-        for (let i = questoesData.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [questoesData[i], questoesData[j]] = [questoesData[j], questoesData[i]]
-        }
-        console.log('Questões embaralhadas aleatoriamente')
-        break
-        
-      case 'revisao':
-        questoesData = await filtrarQuestoesRevisao(questoesData)
-        break
-        
-      case 'rapido':
-        console.log('Modo rápido: não salvará histórico')
-        break
-        
-      case 'normal':
-      default:
-        console.log('Modo normal: questões em ordem padrão')
-        break
-    }
-    
-    setQuestoes(questoesData)
+  } else {
+    // Buscar normalmente
+    questoesData = await getQuestoesParaEstudo(configuracao.materiaId, limite, undefined, {
+      assuntoIds: configuracao.assuntoIds,
+      dificuldade: configuracao.dificuldade,
+      anoProva: configuracao.anoProva,
+      banca: configuracao.banca,
+      // NOVOS FILTROS INTELIGENTES
+      apenasNaoRespondidas: configuracao.apenasNaoRespondidas,
+      apenasErradas: configuracao.apenasErradas,
+      revisaoQuestoesDificeis: configuracao.revisaoQuestoesDificeis
+    })
+  }
+  
+  console.log('Questões encontradas:', questoesData)
+  
+  if (questoesData.length === 0) {
+    alert('Nenhuma questão encontrada para os critérios selecionados.')
+    setLoading(false)
+    return
+  }
+  
+  // Aplicar modo de estudo
+  switch (configuracao.modoEstudo) {
+    case 'aleatorio':
+      // Algoritmo Fisher-Yates para embaralhamento real
+      for (let i = questoesData.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [questoesData[i], questoesData[j]] = [questoesData[j], questoesData[i]]
+      }
+      console.log('Questões embaralhadas aleatoriamente')
+      break
+      
+    case 'revisao':
+      questoesData = await filtrarQuestoesRevisao(questoesData)
+      break
+      
+    case 'rapido':
+      console.log('Modo rápido: não salvará histórico')
+      break
+      
+    case 'normal':
+    default:
+      console.log('Modo normal: questões em ordem padrão')
+      break
+  }
+  
+  setQuestoes(questoesData)
 
   // Salvar progresso inicial da sessão
   await salvarProgressoSessao(
@@ -387,7 +430,7 @@ export default function EstudarPage() {
 
   setModo('estudando')
   setLoading(false)
-  }
+}
 
   const finalizarSessaoEstudo = (resultados: ResultadoSessao) => {
     // Finalizar progresso salvo
@@ -793,6 +836,17 @@ export default function EstudarPage() {
                   <option value="dificil">🔴 Difícil</option>
                 </select>
               </div>
+
+              {/* NOVO: Filtros Inteligentes */}
+              <FiltrosInteligentes
+                filtros={{
+                  apenasNaoRespondidas: configuracao.apenasNaoRespondidas || false,
+                  apenasErradas: configuracao.apenasErradas || false,
+                  revisaoQuestoesDificeis: configuracao.revisaoQuestoesDificeis || false
+                }}
+                onChange={(novosFiltros) => setConfiguracao({...configuracao, ...novosFiltros})}
+                estatisticas={estatisticasFiltros}
+              />
 
               {/* Número de Questões */}  
               <div>

@@ -165,3 +165,24 @@ export async function deleteMateria(id: string): Promise<boolean> {
     throw error
   }
 }
+
+export async function getAssuntosByMateria(materiaId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('assuntos')
+      .select('*')
+      .eq('materia_id', materiaId)
+      .eq('ativo', true)
+      .order('ordem', { ascending: true })
+
+    if (error) {
+      console.error('Erro ao buscar assuntos:', error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
+    console.error('Erro inesperado ao buscar assuntos:', error)
+    return []
+  }
+}

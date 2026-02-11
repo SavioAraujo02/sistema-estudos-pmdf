@@ -36,6 +36,8 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
     { texto: '', correta: false },
     { texto: '', correta: false }
   ])
+  // NOVO: Estado para resposta de certo/errado
+  const [respostaCertoErrado, setRespostaCertoErrado] = useState<boolean | null>(null)
 
   useEffect(() => {
     carregarQuestao()
@@ -50,6 +52,11 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
       setEnunciado(questao.enunciado)
       setTipo(questao.tipo)
       setExplicacao(questao.explicacao || '')
+      
+      // NOVO: Carregar resposta de certo/errado
+      if (questao.tipo === 'certo_errado') {
+        setRespostaCertoErrado(questao.resposta_certo_errado ?? null)
+      }
       
       if (questao.alternativas && questao.alternativas.length > 0) {
         setAlternativas(questao.alternativas.map((alt: AlternativaBanco) => ({
@@ -98,6 +105,9 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
       
       const temCorreta = alternativas.some(alt => alt.correta && alt.texto.trim())
       if (!temCorreta) return 'Marque uma alternativa como correta'
+    } else if (tipo === 'certo_errado') {
+      // NOVO: Validar resposta de certo/errado
+      if (respostaCertoErrado === null) return 'Selecione se a resposta é Certo ou Errado'
     }
     
     return null
@@ -120,7 +130,9 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
       explicacao: explicacao.trim() || undefined,
       alternativas: tipo === 'multipla_escolha' 
         ? alternativas.filter(alt => alt.texto.trim())
-        : undefined
+        : undefined,
+      // NOVO: Incluir resposta de certo/errado
+      resposta_certo_errado: tipo === 'certo_errado' ? respostaCertoErrado : null
     }
 
     const resultado = await updateQuestao(questaoId, dadosQuestao)
@@ -182,7 +194,7 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
 
           {/* Tipo */}
           <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Tipo de Questão
             </label>
             <div className="flex gap-4">
@@ -208,6 +220,46 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
               </label>
             </div>
           </div>
+
+          {/* NOVO: Resposta para Certo/Errado */}
+          {tipo === 'certo_errado' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Resposta Correta *
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setRespostaCertoErrado(true)}
+                  className={`p-4 border-2 rounded-lg transition-all ${
+                    respostaCertoErrado === true
+                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">✅</span>
+                    <span className="font-medium">CERTO</span>
+                  </div>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setRespostaCertoErrado(false)}
+                  className={`p-4 border-2 rounded-lg transition-all ${
+                    respostaCertoErrado === false
+                      ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">❌</span>
+                    <span className="font-medium">ERRADO</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Alternativas (só para múltipla escolha) */}
           {tipo === 'multipla_escolha' && (
@@ -292,7 +344,7 @@ export function EditarQuestao({ questaoId, onClose, onSuccess }: EditarQuestaoPr
               disabled={salvando}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
               Salvar Alterações
             </button>
           </div>

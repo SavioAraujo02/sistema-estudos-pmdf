@@ -179,27 +179,83 @@ export async function adicionarRespostaProgresso(resposta: RespostaSalva): Promi
   }
 }
 
-// Finalizar sessão
-export async function finalizarSessao(): Promise<boolean> {
+// Finalizar sessão com histórico completo
+export async function finalizarSessao(resultados?: {
+  totalQuestoes: number
+  acertos: number
+  tempo: number
+  respostas: any[]
+}): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-
-    const { error } = await supabase
-      .from('progresso_sessao')
-      .update({ 
-        finalizada: true,
-        ultima_atividade: new Date().toISOString()
-      })
-      .eq('usuario_id', user.id)
-      .eq('finalizada', false)
-
-    if (error) {
-      console.error('Erro ao finalizar sessão:', error)
+    if (!user) {
+      console.error('Usuário não autenticado ao finalizar sessão')
       return false
     }
 
-    console.log('✅ Sessão finalizada')
+    // Buscar sessão ativa
+    const { data: sessaoAtiva, error: erroConsulta } = await supabase
+      .from('progresso_sessao')
+      .select('*')
+      .eq('usuario_id', user.id)
+      .eq('finalizada', false)
+      .single()
+
+    if (erroConsulta || !sessaoAtiva) {
+      console.log('ℹ️ Nenhuma sessão ativa encontrada')
+      return true
+    }
+
+    // Calcular estatísticas se fornecidas
+    const estatisticas = resultados ? {
+      total_questoes: resultados.totalQuestoes,
+      total_acertos: resultados.acertos,
+      tempo_total_segundos: Math.round(resultados.tempo / 1000)
+    } : {
+      total_questoes: sessaoAtiva.questoes_ids?.length || 0,
+      total_acertos: 0,
+      tempo_total_segundos: 0
+    }
+
+    // Finalizar sessão com estatísticas
+    const { error: erroFinalizacao } = await supabase
+      .from('progresso_sessao')
+      .update({ 
+        finalizada: true,
+        ultima_atividade: new Date().toISOString(),
+        ...estatisticas
+      })
+      .eq('id', sessaoAtiva.id)
+
+    if (erroFinalizacao) {
+      console.error('Erro ao finalizar sessão:', erroFinalizacao.message)
+      return false
+    }
+
+    // Salvar histórico detalhado de respostas se fornecido
+    if (resultados?.respostas && resultados.respostas.length > 0) {
+      const respostasDetalhadas = resultados.respostas.map(resposta => ({
+        usuario_id: user.id,
+        questao_id: resposta.questao.id,
+        sessao_id: sessaoAtiva.id,
+        resposta_usuario: resposta.resposta,
+        acertou: resposta.correta,
+        tempo_resposta_segundos: Math.round(resposta.tempo / 1000)
+      }))
+
+      const { error: erroHistorico } = await supabase
+        .from('historico_respostas_detalhado')
+        .insert(respostasDetalhadas)
+
+      if (erroHistorico) {
+        console.error('Erro ao salvar histórico detalhado:', erroHistorico.message)
+        // Não falhar a finalização por causa do histórico
+      } else {
+        console.log('✅ Histórico detalhado salvo:', respostasDetalhadas.length, 'respostas')
+      }
+    }
+
+    console.log('✅ Sessão finalizada com sucesso')
     return true
   } catch (error) {
     console.error('Erro inesperado ao finalizar sessão:', error)
@@ -304,5 +360,146 @@ export async function getResumoSessao(): Promise<{
   } catch (error) {
     console.error('Erro ao obter resumo da sessão:', error)
     return null
+  }
+}
+
+// Buscar histórico de sessões do usuário
+export async function getHistoricoSessoes(limite: number = 10): Promise<any[]> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data, error } = await supabase
+      .from('progresso_sessao')
+      .select('*')
+      .eq('usuario_id', user.id)
+      .eq('finalizada', true)
+      .order('ultima_atividade', { ascending: false })
+      .limit(limite)
+
+    if (error) {
+      console.error('Erro ao buscar histórico de sessões:', error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
+    console.error('Erro inesperado ao buscar histórico:', error)
+    return []
+  }
+}
+
+// Buscar questões já respondidas pelo usuário
+export async function getQuestoesRespondidas(materiaId?: string): Promise<{
+  questao_id: string
+  total_respostas: number
+  ultima_resposta: boolean
+  acertos: number
+  erros: number
+  percentual_acerto: number
+}[]> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    let query = supabase
+      .from('historico_respostas_detalhado')
+      .select(`
+        questao_id,
+        acertou,
+        questoes!inner(materia_id)
+      `)
+      .eq('usuario_id', user.id)
+
+    if (materiaId) {
+      query = query.eq('questoes.materia_id', materiaId)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('Erro ao buscar questões respondidas:', error)
+      return []
+    }
+
+    // Agrupar por questão e calcular estatísticas
+    const estatisticasPorQuestao = new Map()
+
+    data?.forEach((resposta: any) => {
+      const questaoId = resposta.questao_id
+      
+      if (!estatisticasPorQuestao.has(questaoId)) {
+        estatisticasPorQuestao.set(questaoId, {
+          questao_id: questaoId,
+          total_respostas: 0,
+          acertos: 0,
+          erros: 0,
+          ultima_resposta: false
+        })
+      }
+
+      const stats = estatisticasPorQuestao.get(questaoId)
+      stats.total_respostas++
+      stats.ultima_resposta = resposta.acertou
+      
+      if (resposta.acertou) {
+        stats.acertos++
+      } else {
+        stats.erros++
+      }
+    })
+
+    // Converter para array e calcular percentuais
+    return Array.from(estatisticasPorQuestao.values()).map(stats => ({
+      ...stats,
+      percentual_acerto: Math.round((stats.acertos / stats.total_respostas) * 100)
+    }))
+
+  } catch (error) {
+    console.error('Erro inesperado ao buscar questões respondidas:', error)
+    return []
+  }
+}
+
+// Verificar se questão específica já foi respondida
+export async function questaoJaRespondida(questaoId: string): Promise<{
+  respondida: boolean
+  ultima_resposta?: boolean
+  total_tentativas?: number
+  percentual_acerto?: number
+}> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { respondida: false }
+
+    const { data, error } = await supabase
+      .from('historico_respostas_detalhado')
+      .select('acertou')
+      .eq('usuario_id', user.id)
+      .eq('questao_id', questaoId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Erro ao verificar questão:', error)
+      return { respondida: false }
+    }
+
+    if (!data || data.length === 0) {
+      return { respondida: false }
+    }
+
+    const acertos = data.filter(r => r.acertou).length
+    const total = data.length
+
+    return {
+      respondida: true,
+      ultima_resposta: data[0].acertou,
+      total_tentativas: total,
+      percentual_acerto: Math.round((acertos / total) * 100)
+    }
+
+  } catch (error) {
+    console.error('Erro inesperado ao verificar questão:', error)
+    return { respondida: false }
   }
 }

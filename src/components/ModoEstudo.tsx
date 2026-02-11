@@ -15,6 +15,7 @@ import { ComentariosInline } from './ComentariosInline'
 import { ReportarErro } from './ReportarErro'
 import { supabase } from '@/lib/supabase'
 import { atualizarQuestaoAtual, adicionarRespostaProgresso } from '@/lib/progresso'
+import { finalizarSessao } from '@/lib/progresso'
 
 interface ModoEstudoProps {
   questoes: QuestaoEstudo[]
@@ -271,14 +272,27 @@ useEffect(() => {
   
     const tempoResposta = Date.now() - tempoQuestao
     let correta = false
+    let respostaDetectada = true
   
     if (questao.tipo === 'certo_errado') {
-      const respostaCorreta = await getRespostaCorretaCertoErrado(questao.id)
-      if (respostaCorreta !== null) {
-        correta = respostaSelecionada === respostaCorreta
+      // MELHORADO: Usar o campo resposta_certo_errado diretamente
+      if (questao.resposta_certo_errado !== null && questao.resposta_certo_errado !== undefined) {
+        correta = respostaSelecionada === questao.resposta_certo_errado
+        console.log('✅ Usando resposta salva no banco:', questao.resposta_certo_errado ? 'CERTO' : 'ERRADO')
       } else {
-        correta = true
-        console.warn('Não foi possível detectar a resposta correta para a questão:', questao.id)
+        // Fallback para questões antigas sem resposta definida
+        console.log('⚠️ Questão sem resposta definida - usando fallback')
+        respostaDetectada = false
+        
+        const respostaCorreta = await getRespostaCorretaCertoErrado(questao.id)
+        if (respostaCorreta !== null) {
+          correta = respostaSelecionada === respostaCorreta
+          console.log('🔍 Resposta detectada pelo fallback:', respostaCorreta ? 'CERTO' : 'ERRADO')
+        } else {
+          // Se não conseguir detectar, considerar como acerto (para não penalizar)
+          correta = true
+          console.warn('❌ Não foi possível detectar a resposta correta para a questão:', questao.id)
+        }
       }
     } else {
       const alternativaCorreta = questao.alternativas?.find(alt => alt.correta)
@@ -307,7 +321,7 @@ useEffect(() => {
     } else {
       console.log('⚡ Modo rápido: resposta não salva no histórico')
     }
-
+  
     // SEMPRE salvar progresso da sessão (independente do modo)
     console.log('💾 Salvando progresso da sessão...')
     await adicionarRespostaProgresso({
@@ -317,15 +331,21 @@ useEffect(() => {
       acertou: correta,
       timestamp: new Date().toISOString()
     })
-
+  
     // PARAR cronômetro da questão após responder
     setCronometroQuestaoAtivo(false)
+    
     // Salvar estado da questão respondida
     setQuestoesRespondidas(prev => new Map(prev.set(questaoAtual, {
       resposta: respostaSelecionada,
       correta,
       mostrarResposta: true
     })))
+  
+    // NOVO: Mostrar alerta se a resposta não foi detectada automaticamente
+    if (!respostaDetectada && questao.tipo === 'certo_errado') {
+      console.log('⚠️ Esta questão não tinha resposta definida - pode precisar de revisão')
+    }
   }
 
   const resetarTempoQuestao = () => {
@@ -416,6 +436,13 @@ useEffect(() => {
         tempo: tempoTotal,
         respostas: todasRespostas
       }
+  
+      // NOVO: Salvar histórico antes de finalizar
+      finalizarSessao(resultados).then(() => {
+        console.log('✅ Histórico salvo com sucesso')
+      }).catch(error => {
+        console.error('Erro ao salvar histórico:', error)
+      })
   
       onFinalizar(resultados)
     } else {
@@ -625,13 +652,25 @@ useEffect(() => {
   )}
           
           <div className="flex items-center justify-between">
-            <span className={`inline-block px-2 py-1 text-xs rounded-full ${
-              questao.tipo === 'certo_errado'
-                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
-                : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
-            }`}>
-              {questao.tipo === 'certo_errado' ? 'Certo/Errado' : 'Múltipla Escolha'}
-            </span>
+          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+            questao.tipo === 'certo_errado'
+              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+              : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
+          }`}>
+            {questao.tipo === 'certo_errado' ? 'Certo/Errado' : 'Múltipla Escolha'}
+          </span>
+
+          {/* ADICIONAR ESTE BLOCO LOGO APÓS O SPAN ACIMA */}
+          {questao.tipo === 'certo_errado' && (questao.resposta_certo_errado === null || questao.resposta_certo_errado === undefined) && (
+            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+              <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
+                <span className="text-sm">⚠️</span>
+                <span className="text-xs">
+                  Esta questão não tem gabarito definido. Sua resposta será considerada correta para não prejudicar seu desempenho.
+                </span>
+              </div>
+            </div>
+          )}
 
             {/* Mostrar assunto da questão */}
             {questao.assunto && (

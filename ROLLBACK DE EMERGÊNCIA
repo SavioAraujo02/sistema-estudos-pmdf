@@ -1,0 +1,18 @@
+-- ========== ROLLBACK DE EMERGÊNCIA ==========
+-- Se algo der errado, rode isso para voltar ao normal:
+ALTER TABLE public.alternativas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.alternativas_eliminadas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assuntos DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comentarios DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comentario_likes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.historico_estudos DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.historico_respostas_detalhado DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.materias DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.progresso_sessao DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questao_reports DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questoes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questoes_tags DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tags DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tempo_respostas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_sessions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usuarios DISABLE ROW LEVEL SECURITY;

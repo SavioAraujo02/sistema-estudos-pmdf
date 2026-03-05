@@ -1,6 +1,6 @@
 'use client'
 
-import { Home, BookOpen, Target, BarChart3, LogOut, Menu, X, TrendingUp, Tag as TagIcon, User } from 'lucide-react'
+import { Home, BookOpen, Target, BarChart3, LogOut, Menu, X, TrendingUp, User } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
@@ -12,7 +12,6 @@ const menuItems = [
   { icon: Target, label: 'Questões', href: '/questoes' },
   { icon: BarChart3, label: 'Estudar', href: '/estudar' },
   { icon: TrendingUp, label: 'Relatórios', href: '/relatorios' },
-  { icon: TagIcon, label: 'Tags', href: '/tags' },
 ]
 
 interface SidebarProps {

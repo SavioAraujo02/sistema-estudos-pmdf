@@ -1,12 +1,14 @@
 {
   "name": "Sistema de Estudos PMDF",
   "short_name": "Estudos PMDF",
-  "description": "Sistema de questões para o CFP da PMDF",
+  "description": "Prepare-se para o CFP da PMDF com questões organizadas e acompanhamento de progresso",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
   "orientation": "portrait-primary",
+  "scope": "/",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/icon-72x72.png",
@@ -58,5 +60,28 @@
     }
   ],
   "categories": ["education", "productivity"],
-  "lang": "pt-BR"
+  "lang": "pt-BR",
+  "shortcuts": [
+    {
+      "name": "Estudar",
+      "short_name": "Estudar",
+      "description": "Iniciar sessão de estudos",
+      "url": "/estudar",
+      "icons": [{ "src": "/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard", 
+      "description": "Ver progresso e estatísticas",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Questões",
+      "short_name": "Questões",
+      "description": "Gerenciar questões",
+      "url": "/questoes",
+      "icons": [{ "src": "/icon-96x96.png", "sizes": "96x96" }]
+    }
+  ]
 }

@@ -5,89 +5,133 @@ export interface QuestaoEstudo {
   enunciado: string
   tipo: 'certo_errado' | 'multipla_escolha'
   explicacao?: string
-  resposta_certo_errado?: boolean | null  // ADICIONADO
+  resposta_certo_errado?: boolean | null
   imagem_url?: string
   imagem_nome?: string
+  created_at?: string
   materia: { nome: string }
   assunto?: { id: string; nome: string; cor: string }
   alternativas?: { id: string; texto: string; correta: boolean }[]
 }
 
+// ✅ INTERFACE EXPANDIDA PARA ESTATÍSTICAS COMPLETAS
+export interface EstatisticasCompletas {
+  totalRespostas: number
+  acertos: number
+  percentualAcertos: number
+  porMateria: Record<string, { total: number; acertos: number; percentual: number }>
+  sequenciaAtual: number
+  melhorSequencia: number
+  tempoMedioResposta: number
+}
+
 export async function getQuestoesParaEstudo(
-  materiaId?: string,
-  limite: number = 1000,
+  materiaId?: string | string[],
+  limite?: number,
   questaoIds?: string[],
   filtros?: {
     assuntoIds?: string[]
     dificuldade?: string
     anoProva?: number
     banca?: string
-    // NOVOS FILTROS INTELIGENTES
     apenasNaoRespondidas?: boolean
     apenasErradas?: boolean
     revisaoQuestoesDificeis?: boolean
+    embaralhar?: boolean
   }
 ): Promise<QuestaoEstudo[]> {
   try {
     console.log('Buscando questões com parâmetros:', { materiaId, limite, questaoIds, filtros })
     
-    let query = supabase
-    .from('questoes')
-    .select(`
-      id,
-      enunciado,
-      tipo,
-      explicacao,
-      resposta_certo_errado,
-      imagem_url,
-      imagem_nome,
-      dificuldade,
-      ano_prova,
-      banca,
-      materias!inner(nome),
-      assuntos(id, nome, cor),
-      alternativas(id, texto, correta)
-    `)
+    // ✅ PAGINAÇÃO AUTOMÁTICA PARA GRANDES VOLUMES
+    const BATCH_SIZE = 1000 // Tamanho do lote por requisição
+    let todasQuestoes: any[] = []
+    let offset = 0
+    let hasMore = true
 
-    // Filtros básicos
-    if (materiaId) {
-      query = query.eq('materia_id', materiaId)
+    while (hasMore) {
+      let query = supabase
+        .from('questoes')
+        .select(`
+          id,
+          enunciado,
+          tipo,
+          explicacao,
+          resposta_certo_errado,
+          imagem_url,
+          imagem_nome,
+          dificuldade,
+          ano_prova,
+          banca,
+          materias!inner(nome),
+          assuntos(id, nome, cor),
+          alternativas(id, texto, correta)
+        `)
+        .range(offset, offset + BATCH_SIZE - 1)
+
+      // Filtros básicos para múltiplas matérias
+      if (materiaId) {
+        if (Array.isArray(materiaId)) {
+          if (materiaId.length > 0) {
+            query = query.in('materia_id', materiaId)
+          }
+        } else {
+          query = query.eq('materia_id', materiaId)
+        }
+      }
+
+      if (questaoIds && questaoIds.length > 0) {
+        query = query.in('id', questaoIds)
+      }
+
+      if (filtros?.assuntoIds && filtros.assuntoIds.length > 0) {
+        query = query.in('assunto_id', filtros.assuntoIds)
+      }
+
+      if (filtros?.dificuldade) {
+        query = query.eq('dificuldade', filtros.dificuldade)
+      }
+
+      if (filtros?.anoProva) {
+        query = query.eq('ano_prova', filtros.anoProva)
+      }
+
+      if (filtros?.banca) {
+        query = query.ilike('banca', `%${filtros.banca}%`)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('Erro ao buscar questões:', error)
+        break
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false
+        break
+      }
+
+      todasQuestoes = [...todasQuestoes, ...data]
+      
+      // Se retornou menos que o batch size, não há mais dados
+      if (data.length < BATCH_SIZE) {
+        hasMore = false
+      }
+
+      // Se já temos o limite desejado, parar
+      if (limite && todasQuestoes.length >= limite) {
+        hasMore = false
+      }
+
+      offset += BATCH_SIZE
+      console.log(`📦 Lote ${Math.floor(offset/BATCH_SIZE)}: ${data.length} questões (Total: ${todasQuestoes.length})`)
     }
 
-    if (questaoIds && questaoIds.length > 0) {
-      query = query.in('id', questaoIds)
-    }
-
-    if (filtros?.assuntoIds && filtros.assuntoIds.length > 0) {
-      query = query.in('assunto_id', filtros.assuntoIds)
-    }
-
-    if (filtros?.dificuldade) {
-      query = query.eq('dificuldade', filtros.dificuldade)
-    }
-
-    if (filtros?.anoProva) {
-      query = query.eq('ano_prova', filtros.anoProva)
-    }
-
-    if (filtros?.banca) {
-      query = query.ilike('banca', `%${filtros.banca}%`)
-    }
-
-    // Aplicar limite básico
-    if (!isNaN(limite) && limite > 0 && limite < 1000) {
-      query = query.limit(limite)
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-      console.error('Erro ao buscar questões para estudo:', error)
-      return []
-    }
+    console.log(`✅ Total de questões carregadas: ${todasQuestoes.length}`)
 
     // Transformar os dados
-    let questoesFormatadas: QuestaoEstudo[] = (data || []).map((item: any) => ({
+    let questoesFormatadas: QuestaoEstudo[] = todasQuestoes.map((item: any) => ({
       id: item.id,
       enunciado: item.enunciado,
       tipo: item.tipo,
@@ -109,15 +153,26 @@ export async function getQuestoesParaEstudo(
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        // Buscar histórico de respostas do usuário
-        const { data: historico } = await supabase
-          .from('historico_respostas_detalhado')
-          .select('questao_id, acertou')
-          .eq('usuario_id', user.id)
-          .in('questao_id', questoesFormatadas.map(q => q.id))
+        // Buscar histórico em lotes também
+        const historicoCompleto = []
+        const questaoIds = questoesFormatadas.map(q => q.id)
+        
+        for (let i = 0; i < questaoIds.length; i += 1000) {
+          const loteIds = questaoIds.slice(i, i + 1000)
+          
+          const { data: historico } = await supabase
+            .from('historico_respostas_detalhado')
+            .select('questao_id, acertou')
+            .eq('usuario_id', user.id)
+            .in('questao_id', loteIds)
+
+          if (historico) {
+            historicoCompleto.push(...historico)
+          }
+        }
 
         const historicoMap = new Map()
-        historico?.forEach(h => {
+        historicoCompleto.forEach(h => {
           if (!historicoMap.has(h.questao_id)) {
             historicoMap.set(h.questao_id, { respostas: [], acertos: 0, erros: 0 })
           }
@@ -132,15 +187,14 @@ export async function getQuestoesParaEstudo(
           const stats = historicoMap.get(questao.id)
           
           if (filtros.apenasNaoRespondidas) {
-            return !stats // Questão nunca foi respondida
+            return !stats
           }
           
           if (filtros.apenasErradas) {
-            return stats && stats.erros > 0 // Questão foi respondida e teve erros
+            return stats && stats.erros > 0
           }
           
           if (filtros.revisaoQuestoesDificeis) {
-            // Questões com baixo percentual de acerto (menos de 70%)
             if (!stats) return false
             const percentual = (stats.acertos / stats.respostas.length) * 100
             return percentual < 70
@@ -151,13 +205,23 @@ export async function getQuestoesParaEstudo(
       }
     }
 
-    // Embaralhar as questões
-    const questoesEmbaralhadas = questoesFormatadas.sort(() => Math.random() - 0.5)
-    
+    // Aplicar embaralhamento
+    let questoesFinais = questoesFormatadas
+
+    if (filtros?.embaralhar) {
+      questoesFinais = questoesFormatadas.sort(() => Math.random() - 0.5)
+      console.log('🎲 Questões embaralhadas')
+    } else {
+      questoesFinais = questoesFormatadas.sort((a, b) => 
+        new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      )
+      console.log('📚 Questões em ordem cronológica')
+    }
+
     // Aplicar limite final
-    let resultado = questoesEmbaralhadas
-    if (!isNaN(limite) && limite > 0 && limite < questoesEmbaralhadas.length) {
-      resultado = questoesEmbaralhadas.slice(0, limite)
+    let resultado = questoesFinais
+    if (limite && !isNaN(limite) && limite > 0 && limite < questoesFinais.length) {
+      resultado = questoesFinais.slice(0, limite)
     }
     
     console.log('Questões finais após filtros:', resultado.length)
@@ -167,6 +231,7 @@ export async function getQuestoesParaEstudo(
     return []
   }
 }
+
 export async function salvarResposta(
   questaoId: string,
   acertou: boolean
@@ -200,7 +265,78 @@ export async function salvarResposta(
   }
 }
 
-export async function getEstatisticasEstudo() {
+// ✅ FUNÇÃO PARA SALVAR TEMPO DE RESPOSTA
+export async function salvarTempoResposta(questaoId: string, tempoSegundos: number) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      console.error('Usuário não autenticado')
+      return false
+    }
+
+    const { error } = await supabase
+      .from('tempo_respostas')
+      .insert([{
+        questao_id: questaoId,
+        usuario_id: user.id,
+        tempo_segundos: tempoSegundos
+      }])
+
+    if (error) {
+      console.error('Erro ao salvar tempo de resposta:', error)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('Erro inesperado ao salvar tempo:', error)
+    return false
+  }
+}
+
+// ✅ FUNÇÃO EXPANDIDA PARA SALVAR RESPOSTA COM TEMPO
+export async function salvarRespostaCompleta(
+  questaoId: string,
+  acertou: boolean,
+  tempoSegundos?: number
+) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      console.error('Usuário não autenticado')
+      return false
+    }
+
+    // Salvar no histórico de estudos
+    const { error: historicoError } = await supabase
+      .from('historico_estudos')
+      .insert([{
+        questao_id: questaoId,
+        usuario_id: user.id,
+        acertou
+      }])
+
+    if (historicoError) {
+      console.error('Erro ao salvar resposta:', historicoError)
+      return false
+    }
+
+    // Salvar tempo se fornecido
+    if (tempoSegundos && tempoSegundos > 0) {
+      await salvarTempoResposta(questaoId, tempoSegundos)
+    }
+
+    return true
+  } catch (error) {
+    console.error('Erro inesperado ao salvar resposta completa:', error)
+    return false
+  }
+}
+
+// ✅ FUNÇÃO EXPANDIDA COM DADOS DE GAMIFICAÇÃO
+export async function getEstatisticasEstudo(): Promise<EstatisticasCompletas> {
   try {
     // Pegar usuário atual
     const { data: { user } } = await supabase.auth.getUser()
@@ -210,38 +346,95 @@ export async function getEstatisticasEstudo() {
         totalRespostas: 0,
         acertos: 0,
         percentualAcertos: 0,
-        porMateria: {}
+        porMateria: {},
+        sequenciaAtual: 0,
+        melhorSequencia: 0,
+        tempoMedioResposta: 0
       }
     }
 
-    const { data, error } = await supabase
-      .from('historico_estudos')
-      .select(`
-        acertou,
-        questoes!inner(
-          materias!inner(nome)
-        )
-      `)
-      .eq('usuario_id', user.id)
+    console.log('📊 Buscando estatísticas completas para usuário:', user.id)
 
-    if (error) {
-      console.error('Erro ao buscar estatísticas:', error)
-      return {
-        totalRespostas: 0,
-        acertos: 0,
-        percentualAcertos: 0,
-        porMateria: {}
-      }
+    // ✅ BUSCAR DADOS MAIS COMPLETOS
+    const [historicoData, tempoData] = await Promise.all([
+      // Buscar histórico com data para calcular sequências
+      supabase
+        .from('historico_estudos')
+        .select(`
+          acertou,
+          data_resposta,
+          questoes!inner(
+            materias!inner(nome)
+          )
+        `)
+        .eq('usuario_id', user.id)
+        .order('data_resposta', { ascending: true }),
+      
+      // Buscar tempos de resposta
+      supabase
+        .from('tempo_respostas')
+        .select('tempo_segundos')
+        .eq('usuario_id', user.id)
+    ])
+
+    const { data: historico, error: historicoError } = historicoData
+    const { data: tempos, error: tempoError } = tempoData
+
+    if (historicoError) {
+      console.error('Erro ao buscar histórico:', historicoError)
     }
 
-    const totalRespostas = data?.length || 0
-    const acertos = data?.filter(r => r.acertou).length || 0
+    if (tempoError) {
+      console.error('Erro ao buscar tempos:', tempoError)
+    }
+
+    const totalRespostas = historico?.length || 0
+    const acertos = historico?.filter(r => r.acertou).length || 0
     const percentualAcertos = totalRespostas > 0 ? Math.round((acertos / totalRespostas) * 100) : 0
 
-    // Agrupar por matéria
+    console.log('📈 Dados básicos:', { totalRespostas, acertos, percentualAcertos })
+
+    // ✅ CALCULAR SEQUÊNCIAS
+    let sequenciaAtual = 0
+    let melhorSequencia = 0
+    let sequenciaTemp = 0
+
+    if (historico && historico.length > 0) {
+      // Calcular sequência atual (do final para o início)
+      for (let i = historico.length - 1; i >= 0; i--) {
+        if (historico[i].acertou) {
+          sequenciaAtual++
+        } else {
+          break
+        }
+      }
+
+      // Calcular melhor sequência (percorrer todo o histórico)
+      for (const resposta of historico) {
+        if (resposta.acertou) {
+          sequenciaTemp++
+          melhorSequencia = Math.max(melhorSequencia, sequenciaTemp)
+        } else {
+          sequenciaTemp = 0
+        }
+      }
+    }
+
+    console.log('🔥 Sequências calculadas:', { sequenciaAtual, melhorSequencia })
+
+    // ✅ CALCULAR TEMPO MÉDIO
+    let tempoMedioResposta = 0
+    if (tempos && tempos.length > 0) {
+      const tempoTotal = tempos.reduce((sum, t) => sum + (t.tempo_segundos || 0), 0)
+      tempoMedioResposta = Math.round(tempoTotal / tempos.length)
+    }
+
+    console.log('⏱️ Tempo médio calculado:', tempoMedioResposta, 'segundos')
+
+    // ✅ AGRUPAR POR MATÉRIA
     const porMateria: Record<string, { total: number; acertos: number; percentual: number }> = {}
     
-    data?.forEach((resposta: any) => {
+    historico?.forEach((resposta: any) => {
       const nomeMateria = resposta.questoes?.materias?.nome || 'Sem matéria'
       
       if (!porMateria[nomeMateria]) {
@@ -260,25 +453,34 @@ export async function getEstatisticasEstudo() {
       stats.percentual = Math.round((stats.acertos / stats.total) * 100)
     })
 
-    return {
+    const resultado = {
       totalRespostas,
       acertos,
       percentualAcertos,
-      porMateria
+      porMateria,
+      sequenciaAtual,
+      melhorSequencia,
+      tempoMedioResposta
     }
+
+    console.log('✅ Estatísticas completas calculadas:', resultado)
+    return resultado
+
   } catch (error) {
     console.error('Erro inesperado ao buscar estatísticas:', error)
     return {
       totalRespostas: 0,
       acertos: 0,
       percentualAcertos: 0,
-      porMateria: {}
+      porMateria: {},
+      sequenciaAtual: 0,
+      melhorSequencia: 0,
+      tempoMedioResposta: 0
     }
   }
 }
 
-// ==================== FUNÇÃO PARA ZERAR ESTATÍSTICAS ====================
-
+// ✅ FUNÇÃO EXPANDIDA PARA ZERAR ESTATÍSTICAS
 export async function zerarEstatisticasUsuario() {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -288,40 +490,48 @@ export async function zerarEstatisticasUsuario() {
       return false
     }
 
-    // Deletar histórico de estudos
-    const { error: historicoError } = await supabase
-      .from('historico_estudos')
-      .delete()
-      .eq('usuario_id', user.id)
+    console.log('🗑️ Iniciando limpeza de estatísticas para usuário:', user.id)
 
-    if (historicoError) {
-      console.error('Erro ao deletar histórico:', historicoError)
+    // ✅ ZERAR TODAS AS TABELAS RELACIONADAS
+    const promises = [
+      // Deletar histórico de estudos
+      supabase
+        .from('historico_estudos')
+        .delete()
+        .eq('usuario_id', user.id),
+      
+      // Deletar tempos de resposta
+      supabase
+        .from('tempo_respostas')
+        .delete()
+        .eq('usuario_id', user.id),
+      
+      // Deletar alternativas eliminadas
+      supabase
+        .from('alternativas_eliminadas')
+        .delete()
+        .eq('usuario_id', user.id),
+      
+      // ✅ DELETAR HISTÓRICO DETALHADO TAMBÉM
+      supabase
+        .from('historico_respostas_detalhado')
+        .delete()
+        .eq('usuario_id', user.id)
+    ]
+
+    const resultados = await Promise.allSettled(promises)
+    
+    // Verificar se houve erros
+    const erros = resultados.filter(r => r.status === 'rejected')
+    if (erros.length > 0) {
+      console.error('Alguns erros ao zerar estatísticas:', erros)
       return false
     }
 
-    // Deletar tempos de resposta
-    const { error: tempoError } = await supabase
-      .from('tempo_respostas')
-      .delete()
-      .eq('usuario_id', user.id)
+    // Contar quantos registros foram deletados
+    const sucessos = resultados.filter(r => r.status === 'fulfilled')
+    console.log(`✅ ${sucessos.length} tabelas limpas com sucesso!`)
 
-    if (tempoError) {
-      console.error('Erro ao deletar tempos:', tempoError)
-      return false
-    }
-
-    // Deletar alternativas eliminadas
-    const { error: eliminadasError } = await supabase
-      .from('alternativas_eliminadas')
-      .delete()
-      .eq('usuario_id', user.id)
-
-    if (eliminadasError) {
-      console.error('Erro ao deletar alternativas eliminadas:', eliminadasError)
-      return false
-    }
-
-    console.log('✅ Estatísticas zeradas com sucesso!')
     return true
   } catch (error) {
     console.error('Erro inesperado ao zerar estatísticas:', error)
@@ -330,7 +540,7 @@ export async function zerarEstatisticasUsuario() {
 }
 
 // Calcular estatísticas para filtros inteligentes
-export async function getEstatisticasFiltros(materiaId?: string): Promise<{
+export async function getEstatisticasFiltros(materiaIds?: string | string[]): Promise<{
   totalQuestoes: number
   naoRespondidas: number
   comErros: number
@@ -343,14 +553,20 @@ export async function getEstatisticasFiltros(materiaId?: string): Promise<{
       return { totalQuestoes: 0, naoRespondidas: 0, comErros: 0, dificeis: 0 }
     }
 
-    // Buscar total de questões da matéria
+    // ✅ MUDANÇA: Buscar total de questões (múltiplas matérias)
     let queryTotal = supabase
-      .from('questoes')
-      .select('id', { count: 'exact' })
+    .from('questoes')
+    .select('id', { count: 'exact' })
 
-    if (materiaId) {
-      queryTotal = queryTotal.eq('materia_id', materiaId)
+  if (materiaIds) {
+    if (Array.isArray(materiaIds)) {
+      if (materiaIds.length > 0) {
+        queryTotal = queryTotal.in('materia_id', materiaIds)
+      }
+    } else {
+      queryTotal = queryTotal.eq('materia_id', materiaIds)
     }
+  }
 
     const { count: totalQuestoes } = await queryTotal
 
@@ -364,8 +580,14 @@ export async function getEstatisticasFiltros(materiaId?: string): Promise<{
       `)
       .eq('usuario_id', user.id)
 
-    if (materiaId) {
-      queryHistorico = queryHistorico.eq('questoes.materia_id', materiaId)
+    if (materiaIds) {
+      if (Array.isArray(materiaIds)) {
+        if (materiaIds.length > 0) {
+          queryHistorico = queryHistorico.in('questoes.materia_id', materiaIds)
+        }
+      } else {
+        queryHistorico = queryHistorico.eq('questoes.materia_id', materiaIds)
+      }
     }
 
     const { data: historico } = await queryHistorico
@@ -411,5 +633,206 @@ export async function getEstatisticasFiltros(materiaId?: string): Promise<{
   } catch (error) {
     console.error('Erro ao calcular estatísticas dos filtros:', error)
     return { totalQuestoes: 0, naoRespondidas: 0, comErros: 0, dificeis: 0 }
+  }
+}
+
+// ✅ FUNÇÃO PARA ATUALIZAR SEQUÊNCIA EM TEMPO REAL
+export async function atualizarSequenciaAtual(acertou: boolean) {
+  try {
+    const sequenciaAtual = parseInt(localStorage.getItem('sequencia_atual') || '0')
+    const melhorSequencia = parseInt(localStorage.getItem('melhor_sequencia') || '0')
+    
+    if (acertou) {
+      const novaSequencia = sequenciaAtual + 1
+      localStorage.setItem('sequencia_atual', novaSequencia.toString())
+      
+      if (novaSequencia > melhorSequencia) {
+        localStorage.setItem('melhor_sequencia', novaSequencia.toString())
+      }
+    } else {
+      localStorage.setItem('sequencia_atual', '0')
+    }
+    
+    return true
+  } catch (error) {
+    console.error('Erro ao atualizar sequência:', error)
+    return false
+  }
+}
+
+// ✅ FUNÇÃO PARA ATUALIZAR ATIVIDADE RECENTE
+export async function adicionarAtividadeRecente(atividade: {
+  tipo: 'questao' | 'sessao' | 'meta'
+  descricao: string
+  resultado?: 'acerto' | 'erro'
+  materia?: string
+}) {
+  try {
+    const atividadesExistentes = JSON.parse(localStorage.getItem('atividade_recente') || '[]')
+    
+    const novaAtividade = {
+      id: Date.now().toString(),
+      ...atividade,
+      timestamp: new Date().toISOString()
+    }
+    
+    // Adicionar no início e manter apenas as últimas 10
+    const atividadesAtualizadas = [novaAtividade, ...atividadesExistentes].slice(0, 10)
+    
+    localStorage.setItem('atividade_recente', JSON.stringify(atividadesAtualizadas))
+    localStorage.setItem('ultima_atividade', new Date().toISOString())
+    
+    return true
+  } catch (error) {
+    console.error('Erro ao adicionar atividade recente:', error)
+    return false
+  }
+}
+
+// ✅ FUNÇÃO PARA ATUALIZAR CONTADOR DIÁRIO
+export async function atualizarContadorDiario() {
+  try {
+    const hoje = new Date().toDateString()
+    const questoesHoje = parseInt(localStorage.getItem(`questoes_hoje_${hoje}`) || '0')
+    
+    localStorage.setItem(`questoes_hoje_${hoje}`, (questoesHoje + 1).toString())
+    
+    // Atualizar dias consecutivos
+    const ontem = new Date()
+    ontem.setDate(ontem.getDate() - 1)
+    const questoesOntem = parseInt(localStorage.getItem(`questoes_hoje_${ontem.toDateString()}`) || '0')
+    
+    let diasConsecutivos = parseInt(localStorage.getItem('dias_consecutivos') || '0')
+    
+    if (questoesHoje === 0) { // Primeira questão do dia
+      if (questoesOntem > 0) {
+        diasConsecutivos += 1
+      } else {
+        diasConsecutivos = 1 // Reiniciar sequência
+      }
+      localStorage.setItem('dias_consecutivos', diasConsecutivos.toString())
+    }
+    
+    return true
+  } catch (error) {
+    console.error('Erro ao atualizar contador diário:', error)
+    return false
+  }
+}
+
+// ✅ FUNÇÃO COMPLETA PARA SALVAR RESPOSTA COM GAMIFICAÇÃO
+export async function salvarRespostaComGamificacao(
+  questaoId: string,
+  acertou: boolean,
+  tempoSegundos?: number,
+  materiaId?: string,
+  nomeMateria?: string
+) {
+  try {
+    console.log('🎮 Salvando resposta com gamificação:', { questaoId, acertou, tempoSegundos })
+    
+    // 1. Salvar resposta no banco
+    const sucessoBanco = await salvarRespostaCompleta(questaoId, acertou, tempoSegundos)
+    
+    if (!sucessoBanco) {
+      console.error('Falha ao salvar no banco')
+      return false
+    }
+    
+    // 2. Atualizar gamificação local
+    await Promise.all([
+      atualizarSequenciaAtual(acertou),
+      atualizarContadorDiario(),
+      adicionarAtividadeRecente({
+        tipo: 'questao',
+        descricao: `Respondeu questão${nomeMateria ? ` de ${nomeMateria}` : ''}`,
+        resultado: acertou ? 'acerto' : 'erro',
+        materia: nomeMateria
+      })
+    ])
+    
+    console.log('✅ Resposta salva com gamificação completa')
+    return true
+    
+  } catch (error) {
+    console.error('Erro ao salvar resposta com gamificação:', error)
+    return false
+  }
+}
+
+// ✅ FUNÇÃO PARA VERIFICAR CONQUISTAS DESBLOQUEADAS
+export async function verificarConquistasDesbloqueadas() {
+  try {
+    const stats = await getEstatisticasEstudo()
+    const conquistasDesbloqueadas = []
+    
+    // Verificar conquistas básicas
+    if (stats.totalRespostas === 1) {
+      conquistasDesbloqueadas.push({
+        id: 'primeira_questao',
+        nome: 'Primeiro Passo',
+        icone: '🎯'
+      })
+    }
+    
+    if (stats.totalRespostas === 10) {
+      conquistasDesbloqueadas.push({
+        id: 'dez_questoes',
+        nome: 'Iniciante',
+        icone: '📚'
+      })
+    }
+    
+    if (stats.totalRespostas === 50) {
+      conquistasDesbloqueadas.push({
+        id: 'cinquenta_questoes',
+        nome: 'Estudioso',
+        icone: '📖'
+      })
+    }
+    
+    if (stats.totalRespostas === 100) {
+      conquistasDesbloqueadas.push({
+        id: 'cem_questoes',
+        nome: 'Centurião',
+        icone: '💯'
+      })
+    }
+    
+    if (stats.sequenciaAtual === 5) {
+      conquistasDesbloqueadas.push({
+        id: 'sequencia_cinco',
+        nome: 'Aquecendo',
+        icone: '🔥'
+      })
+    }
+    
+    if (stats.melhorSequencia === 10) {
+      conquistasDesbloqueadas.push({
+        id: 'sequencia_dez',
+        nome: 'Em Chamas',
+        icone: '🔥'
+      })
+    }
+    
+    // Salvar conquistas desbloqueadas
+    if (conquistasDesbloqueadas.length > 0) {
+      const conquistasExistentes = JSON.parse(localStorage.getItem('conquistas_desbloqueadas') || '[]')
+      const novasConquistas = conquistasDesbloqueadas.filter(nova => 
+        !conquistasExistentes.some((existente: any) => existente.id === nova.id)
+      )
+      
+      if (novasConquistas.length > 0) {
+        localStorage.setItem('conquistas_desbloqueadas', 
+          JSON.stringify([...conquistasExistentes, ...novasConquistas])
+        )
+        return novasConquistas
+      }
+    }
+    
+    return []
+  } catch (error) {
+    console.error('Erro ao verificar conquistas:', error)
+    return []
   }
 }

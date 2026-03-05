@@ -16,13 +16,15 @@ import { ReportarErro } from './ReportarErro'
 import { supabase } from '@/lib/supabase'
 import { atualizarQuestaoAtual, adicionarRespostaProgresso } from '@/lib/progresso'
 import { finalizarSessao } from '@/lib/progresso'
+import { useTimerInteligente } from '@/hooks/useTimerInteligente'
 
 interface ModoEstudoProps {
   questoes: QuestaoEstudo[]
   onFinalizar: (resultados: ResultadoSessao) => void
   configuracao?: {
     materiaId?: string
-    tagIds: string[]
+    materiasSelecionadas?: string[]
+    assuntoIds: string[]
     numeroQuestoes: number | 'todas'
     modoEstudo: 'normal' | 'revisao' | 'rapido' | 'aleatorio'
     salvarHistorico: boolean
@@ -58,13 +60,9 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const [tempoInicio, setTempoInicio] = useState(Date.now())
   const [tempoQuestao, setTempoQuestao] = useState(Date.now())
   
-  // Estados do cronômetro
-  const [tempoDecorrido, setTempoDecorrido] = useState(0)
-  const [tempoQuestaoAtual, setTempoQuestaoAtual] = useState(0)
-  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null)
-  const [tempoInicioSessao, setTempoInicioSessao] = useState(Date.now())
-  const [cronometroQuestaoAtivo, setCronometroQuestaoAtivo] = useState(true)
-  const [cronometroSessaoPausado, setCronometroSessaoPausado] = useState(false)
+  // Timer inteligente
+  const timerSessao = useTimerInteligente()
+  const timerQuestao = useTimerInteligente()
 
   // Estados dos comentários e reports
   const [mostrarComentarios, setMostrarComentarios] = useState(false)
@@ -72,8 +70,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const [alternativasEliminadas, setAlternativasEliminadas] = useState<string[]>([])
 
   useEffect(() => {
-    const agora = Date.now()
-    
     // Verificar se há dados de restauração
     const dadosRestauracao = localStorage.getItem('sessao_restauracao')
     
@@ -110,11 +106,11 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
           console.log('✅ Respostas restauradas:', respostasFormatadas.length)
         }
         
-        // Restaurar tempo de início se disponível
+        // Restaurar timers com tempo original
         if (dados.tempoInicio) {
-          setTempoInicioSessao(dados.tempoInicio)
+          timerSessao.iniciar(dados.tempoInicio)
         } else {
-          setTempoInicioSessao(agora)
+          timerSessao.iniciar()
         }
         
         // Limpar dados de restauração
@@ -122,32 +118,18 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
         
       } catch (error) {
         console.error('Erro ao restaurar sessão:', error)
-        setTempoInicioSessao(agora)
+        timerSessao.iniciar()
       }
     } else {
-      setTempoInicioSessao(agora)
+      timerSessao.iniciar()
     }
     
-    setTempoInicio(agora)
-    setTempoQuestao(agora)
-    setCronometroQuestaoAtivo(true)
+    // Iniciar timer da questão
+    timerQuestao.iniciar()
+    setTempoInicio(Date.now())
+    setTempoQuestao(Date.now())
     
-    // Iniciar cronômetro
-    const id = setInterval(() => {
-      const agora = Date.now()
-      setTempoDecorrido(agora - tempoInicioSessao)
-      
-      if (cronometroQuestaoAtivo) {
-        setTempoQuestaoAtual(agora - tempoQuestao)
-      }
-    }, 100)
-    
-    setIntervalId(id)
-    
-    return () => {
-      if (id) clearInterval(id)
-    }
-  }, []) // Manter dependência vazia e usar useEffect separado
+  }, []) // Manter dependência vazia
 
   // useEffect separado para restauração quando questões mudarem
 useEffect(() => {
@@ -197,35 +179,6 @@ useEffect(() => {
   }
 }, [questoes.length]) // Usar tamanho do array como dependência
 
-  // Atualizar cronômetro quando estado mudar
-  useEffect(() => {
-    if (intervalId) {
-      clearInterval(intervalId)
-      
-      const id = setInterval(() => {
-        const agora = Date.now()
-        
-        // Só atualiza tempo da sessão se não estiver pausado
-        if (!cronometroSessaoPausado) {
-          setTempoDecorrido(agora - tempoInicioSessao)
-        }
-        
-        // Só atualiza tempo da questão se ambos estiverem ativos
-        if (cronometroQuestaoAtivo && !cronometroSessaoPausado) {
-          setTempoQuestaoAtual(agora - tempoQuestao)
-        }
-      }, 100)
-      
-      setIntervalId(id)
-    }
-  }, [cronometroQuestaoAtivo, cronometroSessaoPausado, tempoQuestao, tempoInicioSessao])
-
-  // Limpar intervalo quando componente for desmontado
-  useEffect(() => {
-    return () => {
-      if (intervalId) clearInterval(intervalId)
-    }
-  }, [intervalId])
 
   // Carregar alternativas eliminadas quando mudar de questão
   useEffect(() => {
@@ -270,7 +223,7 @@ useEffect(() => {
   const verificarResposta = async () => {
     if (respostaSelecionada === null) return
   
-    const tempoResposta = Date.now() - tempoQuestao
+    const tempoResposta = timerQuestao.tempo
     let correta = false
     let respostaDetectada = true
   
@@ -332,8 +285,8 @@ useEffect(() => {
       timestamp: new Date().toISOString()
     })
   
-    // PARAR cronômetro da questão após responder
-    setCronometroQuestaoAtivo(false)
+     // PARAR cronômetro da questão após responder
+     timerQuestao.pausar()
     
     // Salvar estado da questão respondida
     setQuestoesRespondidas(prev => new Map(prev.set(questaoAtual, {
@@ -349,9 +302,9 @@ useEffect(() => {
   }
 
   const resetarTempoQuestao = () => {
+    timerQuestao.resetar()
+    timerQuestao.iniciar()
     setTempoQuestao(Date.now())
-    setTempoQuestaoAtual(0)
-    setCronometroQuestaoAtivo(true)
   }
 
   const voltarQuestao = () => {
@@ -421,10 +374,11 @@ useEffect(() => {
 
   const proximaQuestao = () => {
     if (isUltimaQuestao) {
-      // Parar cronômetro
-      if (intervalId) clearInterval(intervalId)
+      // Parar timers
+      timerSessao.pausar()
+      timerQuestao.pausar()
       
-      const tempoTotal = Date.now() - tempoInicioSessao
+      const tempoTotal = timerSessao.tempo
       const todasRespostas = mostrarResposta ? respostas : [...respostas]
       const acertos = todasRespostas.filter(r => r.correta).length
       
@@ -436,14 +390,14 @@ useEffect(() => {
         tempo: tempoTotal,
         respostas: todasRespostas
       }
-  
+
       // NOVO: Salvar histórico antes de finalizar
       finalizarSessao(resultados).then(() => {
         console.log('✅ Histórico salvo com sucesso')
       }).catch(error => {
         console.error('Erro ao salvar histórico:', error)
       })
-  
+
       onFinalizar(resultados)
     } else {
       avancarQuestao()
@@ -451,9 +405,6 @@ useEffect(() => {
   }
 
   const reiniciarSessao = () => {
-    // Parar cronômetro atual
-    if (intervalId) clearInterval(intervalId)
-    
     // Resetar estados
     setQuestaoAtual(0)
     setRespostaSelecionada(null)
@@ -464,32 +415,15 @@ useEffect(() => {
     setQuestoesRespondidas(new Map())
     setAlternativasEliminadas([])
     
-    // Reiniciar cronômetro
+    // Reiniciar timers
+    timerSessao.resetar()
+    timerQuestao.resetar()
+    timerSessao.iniciar()
+    timerQuestao.iniciar()
+    
     const agora = Date.now()
     setTempoInicio(agora)
     setTempoQuestao(agora)
-    setTempoInicioSessao(agora)
-    setTempoDecorrido(0)
-    setTempoQuestaoAtual(0)
-    setCronometroQuestaoAtivo(true)
-    
-    const id = setInterval(() => {
-      const agora = Date.now()
-      setTempoDecorrido(agora - tempoInicioSessao)
-      if (cronometroQuestaoAtivo) {
-        setTempoQuestaoAtual(agora - tempoQuestao)
-      }
-    }, 100)
-    
-    setIntervalId(id)
-  }
-
-  // Função para formatar tempo
-  const formatarTempo = (ms: number) => {
-    const segundos = Math.floor(ms / 1000)
-    const minutos = Math.floor(segundos / 60)
-    const seg = segundos % 60
-    return `${minutos.toString().padStart(2, '0')}:${seg.toString().padStart(2, '0')}`
   }
 
   const toggleEliminarAlternativa = async (alternativaId: string) => {
@@ -550,7 +484,7 @@ useEffect(() => {
             <div className="flex items-center gap-2">
               <Target className="h-5 w-5 text-blue-600" />
               <span className="font-medium text-gray-900 dark:text-white">
-                Questão {questaoAtual + 1} de {questoes.length}
+              {`Questão ${questaoAtual + 1} de ${questoes.length}`}
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -559,43 +493,51 @@ useEffect(() => {
             </div>
           </div>
           
-          {/* Cronômetros */}
-          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
+                    {/* Cronômetros */}
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
             <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg ${
-              cronometroSessaoPausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20'
+              timerQuestao.pausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20'
             }`}>
               <Timer className={`h-3 w-3 sm:h-4 sm:w-4 ${
-                cronometroSessaoPausado ? 'text-red-600' : 'text-blue-600'
+                timerQuestao.pausado ? 'text-red-600' : 'text-blue-600'
               }`} />
               <span className={`text-xs sm:text-sm font-mono ${
-                cronometroSessaoPausado ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'
+                timerQuestao.pausado ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'
               }`}>
-                {formatarTempo(tempoQuestaoAtual)}
+                {timerQuestao.tempoFormatado}
               </span>
             </div>
             <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg ${
-              cronometroSessaoPausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-900'
+              timerSessao.pausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-900'
             }`}>
               <Clock className={`h-3 w-3 sm:h-4 sm:w-4 ${
-                cronometroSessaoPausado ? 'text-red-600' : 'text-gray-600'
+                timerSessao.pausado ? 'text-red-600' : 'text-gray-600'
               }`} />
               <span className={`text-xs sm:text-sm font-mono ${
-                cronometroSessaoPausado ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'
+                timerSessao.pausado ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'
               }`}>
-                {formatarTempo(tempoDecorrido)}
+                {timerSessao.tempoFormatado}
               </span>
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setCronometroSessaoPausado(!cronometroSessaoPausado)}
+                onClick={() => {
+                  if (timerSessao.pausado) {
+                    timerSessao.continuar()
+                    timerQuestao.continuar()
+                  } else {
+                    timerSessao.pausar()
+                    timerQuestao.pausar()
+                  }
+                }}
                 className={`flex items-center gap-1 px-2 py-1 text-xs sm:text-sm rounded transition-colors ${
-                  cronometroSessaoPausado 
+                  timerSessao.pausado 
                     ? 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
                     : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
                 }`}
-                title={cronometroSessaoPausado ? 'Continuar cronômetros' : 'Pausar cronômetros'}
+                title={timerSessao.pausado ? 'Continuar cronômetros' : 'Pausar cronômetros'}
               >
-                {cronometroSessaoPausado ? (
+                {timerSessao.pausado ? (
                   <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M8 5v14l11-7z"/>
                   </svg>
@@ -604,7 +546,7 @@ useEffect(() => {
                     <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
                   </svg>
                 )}
-                <span className="hidden sm:inline">{cronometroSessaoPausado ? 'Play' : 'Pause'}</span>
+                <span className="hidden sm:inline">{timerSessao.pausado ? 'Play' : 'Pause'}</span>
               </button>
               <button
                 onClick={reiniciarSessao}
@@ -615,7 +557,6 @@ useEffect(() => {
               </button>
             </div>
           </div>
-        </div>
 
         {/* Progress bar */}
         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -627,14 +568,14 @@ useEffect(() => {
       </div>
 
       {/* Questão */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-      <div className="mb-6">
-  <div className="mb-4">
-    <EnunciadoFormatado 
-      texto={questao.enunciado}
-      className="text-lg font-medium"
-    />
-  </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+        <div className="mb-6">
+        <div className="mb-4">
+          <EnunciadoFormatado 
+            texto={questao.enunciado}
+            className="text-lg font-medium"
+          />
+    </div>
   
   {/* Imagem da questão */}
   {questao.imagem_url && (
@@ -889,6 +830,7 @@ useEffect(() => {
             </>
           )}
         </div>
+        </div>
 
         {/* Comentários e Reports - AGORA ABAIXO DA QUESTÃO */}
         <ComentariosInline
@@ -897,7 +839,7 @@ useEffect(() => {
           onToggle={() => setMostrarComentarios(!mostrarComentarios)}
         />
 
-        <ReportarErro
+          <ReportarErro
           questaoId={questao.id}
           isOpen={mostrarReport}
           onToggle={() => setMostrarReport(!mostrarReport)}

@@ -25,22 +25,15 @@ export async function salvarProgressoSessao(
   configuracao: any,
   questoesIds: string[],
   questaoAtual: number = 0,
-  respostas: RespostaSalva[] = []
+  respostas: RespostaSalva[] = [],
+  sessaoId?: string
 ): Promise<string | null> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
-    // Verificar se já existe uma sessão ativa
-    const { data: sessaoExistente } = await supabase
-      .from('progresso_sessao')
-      .select('id')
-      .eq('usuario_id', user.id)
-      .eq('finalizada', false)
-      .single()
-
-    if (sessaoExistente) {
-      // Atualizar sessão existente
+    // Se sessaoId fornecido, atualizar sessão específica
+    if (sessaoId) {
       const { data, error } = await supabase
         .from('progresso_sessao')
         .update({
@@ -50,39 +43,48 @@ export async function salvarProgressoSessao(
           respostas,
           ultima_atividade: new Date().toISOString()
         })
-        .eq('id', sessaoExistente.id)
+        .eq('id', sessaoId)
         .select()
         .single()
 
       if (error) {
-        console.error('Erro ao atualizar progresso:', error)
+        console.error('Erro ao atualizar sessão específica:', error)
         return null
       }
 
-      console.log('✅ Progresso atualizado:', data.id)
-      return data.id
-    } else {
-      // Criar nova sessão
-      const { data, error } = await supabase
-        .from('progresso_sessao')
-        .insert({
-          usuario_id: user.id,
-          configuracao,
-          questoes_ids: questoesIds,
-          questao_atual: questaoAtual,
-          respostas
-        })
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Erro ao criar progresso:', error)
-        return null
-      }
-
-      console.log('✅ Nova sessão de progresso criada:', data.id)
+      console.log('✅ Sessão específica atualizada:', data.id)
       return data.id
     }
+
+    // ✅ SEMPRE criar nova sessão quando não há sessaoId
+    const nomeSessao = configuracao.nomeSessao?.trim() || 
+      (configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0
+        ? `Estudo - ${configuracao.materiasSelecionadas.length} matérias`
+        : 'Sessão de Estudo')
+
+    const { data, error } = await supabase
+      .from('progresso_sessao')
+      .insert({
+        usuario_id: user.id,
+        configuracao,
+        questoes_ids: questoesIds,
+        questao_atual: questaoAtual,
+        respostas,
+        nome_sessao: nomeSessao,
+        cor_sessao: configuracao.corSessao || '#3B82F6',
+        materias_ids: configuracao.materiasSelecionadas || [],
+        total_questoes: questoesIds.length
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Erro ao criar nova sessão:', error)
+      return null
+    }
+
+    console.log('✅ Nova sessão criada:', data.id)
+    return data.id
   } catch (error) {
     console.error('Erro inesperado ao salvar progresso:', error)
     return null

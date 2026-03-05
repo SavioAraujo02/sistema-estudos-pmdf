@@ -34,13 +34,10 @@ export async function getMateriasComEstatisticas() {
   try {
     console.time('⏱️ getMateriasComEstatisticas')
     
-    // 1. Buscar matérias com contagem de questões (1 query)
+    // 1. Buscar matérias básicas
     const { data: materias, error: materiasError } = await supabase
       .from('materias')
-      .select(`
-        *,
-        questoes:questoes(count)
-      `)
+      .select('*')
       .order('nome')
 
     if (materiasError) {
@@ -48,66 +45,59 @@ export async function getMateriasComEstatisticas() {
       return []
     }
 
-    // 2. Pegar usuário atual UMA VEZ SÓ
-    const { data: { user } } = await supabase.auth.getUser()
+    // 2. Buscar TODAS as questões usando count
+    const { count: totalQuestoes } = await supabase
+      .from('questoes')
+      .select('*', { count: 'exact', head: true })
 
-    if (!user) {
-      // Se não há usuário, retornar só com contagem de questões
-      console.timeEnd('⏱️ getMateriasComEstatisticas')
-      return (materias || []).map(materia => ({
-        ...materia,
-        questoes_count: materia.questoes?.[0]?.count || 0,
-        percentual_acertos: 0,
-        total_respostas: 0
-      }))
-    }
+    const { count: questoesCertoErrado } = await supabase
+      .from('questoes')
+      .select('*', { count: 'exact', head: true })
+      .eq('tipo', 'certo_errado')
 
-    // 3. Buscar TODO o histórico do usuário de UMA VEZ (1 query)
-    const { data: historico, error: historicoError } = await supabase
-      .from('historico_estudos')
-      .select(`
-        acertou,
-        questoes!inner(materia_id)
-      `)
-      .eq('usuario_id', user.id)
+    const { count: questoesMultipla } = await supabase
+      .from('questoes')
+      .select('*', { count: 'exact', head: true })
+      .eq('tipo', 'multipla_escolha')
 
-    if (historicoError) {
-      console.error('Erro ao buscar histórico:', historicoError)
-    }
+    console.log('📊 CONTAGENS REAIS:')
+    console.log('- Total questões:', totalQuestoes)
+    console.log('- Certo/Errado:', questoesCertoErrado)
+    console.log('- Múltipla Escolha:', questoesMultipla)
 
-    // 4. Processar estatísticas em memória (0 queries)
-    const estatisticasPorMateria = new Map()
+    // 3. Para cada matéria, contar suas questões
+    const materiasComStats = await Promise.all(
+      (materias || []).map(async (materia) => {
+        // Contar questões desta matéria
+        const { count: questoesMateria } = await supabase
+          .from('questoes')
+          .select('*', { count: 'exact', head: true })
+          .eq('materia_id', materia.id)
 
-    if (historico) {
-      historico.forEach((h: any) => {
-        // h.questoes é um objeto, não array, devido ao inner join
-        const materiaId = h.questoes?.materia_id
-        if (materiaId) {
-          if (!estatisticasPorMateria.has(materiaId)) {
-            estatisticasPorMateria.set(materiaId, { total: 0, acertos: 0 })
-          }
-          const stats = estatisticasPorMateria.get(materiaId)
-          stats.total++
-          if (h.acertou) stats.acertos++
+        const { count: certoErradoMateria } = await supabase
+          .from('questoes')
+          .select('*', { count: 'exact', head: true })
+          .eq('materia_id', materia.id)
+          .eq('tipo', 'certo_errado')
+
+        const { count: multiplaMateria } = await supabase
+          .from('questoes')
+          .select('*', { count: 'exact', head: true })
+          .eq('materia_id', materia.id)
+          .eq('tipo', 'multipla_escolha')
+
+        return {
+          ...materia,
+          questoes_count: questoesMateria || 0,
+          questoes_certo_errado: certoErradoMateria || 0,
+          questoes_multipla_escolha: multiplaMateria || 0,
+          percentual_acertos: 0,
+          total_respostas: 0
         }
       })
-    }
-
-    // 5. Combinar dados (0 queries)
-    const materiasComStats = (materias || []).map(materia => {
-      const stats = estatisticasPorMateria.get(materia.id) || { total: 0, acertos: 0 }
-      const percentualAcertos = stats.total > 0 ? Math.round((stats.acertos / stats.total) * 100) : 0
-
-      return {
-        ...materia,
-        questoes_count: materia.questoes?.[0]?.count || 0,
-        percentual_acertos: percentualAcertos,
-        total_respostas: stats.total
-      }
-    })
+    )
 
     console.timeEnd('⏱️ getMateriasComEstatisticas')
-    console.log('✅ Matérias carregadas:', materiasComStats.length, 'em', performance.now())
     return materiasComStats
 
   } catch (error) {
@@ -115,6 +105,7 @@ export async function getMateriasComEstatisticas() {
     return []
   }
 }
+
 
 export async function updateMateria(id: string, nome: string, descricao?: string): Promise<boolean> {
   const { error } = await supabase

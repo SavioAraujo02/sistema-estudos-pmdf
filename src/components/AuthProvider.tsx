@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { registerSession, updateSessionActivity, removeSession, getActiveUsers } from '@/lib/sessions'
+import { createOrUpdateSession, updateSessionActivity } from '@/lib/sessionManager'
 
 interface UsuarioStatus {
   status: 'pendente' | 'ativo' | 'expirado' | 'bloqueado'
@@ -50,6 +50,54 @@ function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
     clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
   }) as T
+}
+
+// Função para buscar usuários ativos com o novo sistema
+async function getActiveUsers(): Promise<ActiveUsersInfo> {
+  try {
+    // Buscar sessões ativas (últimos 10 minutos)
+    const { data: sessoes, error } = await supabase
+      .from('user_sessions')
+      .select('usuario_id, device_fingerprint, last_activity')
+      .gte('last_activity', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+
+    if (error) throw error
+
+    // Contar usuários únicos e dispositivos
+    const usuariosUnicos = new Set(sessoes.map(s => s.usuario_id))
+    const userDevices: Record<string, number> = {}
+    
+    sessoes.forEach(sessao => {
+      userDevices[sessao.usuario_id] = (userDevices[sessao.usuario_id] || 0) + 1
+    })
+
+    return {
+      totalActive: usuariosUnicos.size,
+      totalDevices: sessoes.length,
+      userDevices
+    }
+  } catch (error) {
+    console.error('Erro ao buscar usuários ativos:', error)
+    return { totalActive: 0, totalDevices: 0, userDevices: {} }
+  }
+}
+
+// Função para remover sessão do usuário
+async function removeUserSession(userId: string) {
+  try {
+    const { error } = await supabase
+      .from('user_sessions')
+      .delete()
+      .eq('usuario_id', userId)
+
+    if (error) {
+      console.error('Erro ao remover sessão:', error)
+    } else {
+      console.log('✅ Sessão removida com sucesso')
+    }
+  } catch (error) {
+    console.error('Erro ao remover sessão:', error)
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -186,14 +234,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Verificar status do usuário
       await verificarStatusUsuario(session.user.id)
       
-      // Registrar sessão ativa
-      await registerSession()
+      // Criar/atualizar sessão com dados do dispositivo e IP
+      await createOrUpdateSession(session.user.id)
       
       // Atualizar usuários ativos
       await refreshActiveUsers()
     } else {
       // Remover sessão ao fazer logout
-      await removeSession()
+      if (user?.id) {
+        await removeUserSession(user.id)
+      }
       
       setUserRole(null)
       setIsAdmin(false)
@@ -204,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     setLoading(false)
-  }, [verificarStatusUsuario, refreshActiveUsers])
+  }, [verificarStatusUsuario, refreshActiveUsers, user?.id])
 
   // Função para verificar status manualmente
   const verificarStatus = useCallback(async () => {
@@ -224,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
 
     const updateActivity = async () => {
-      await updateSessionActivity()
+      await updateSessionActivity(user.id)
     }
 
     // Atualizar atividade a cada 5 minutos
@@ -272,7 +322,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const initializeAuth = async () => {
       try {
-        console.log('🔐 Inicializando autenticação com rastreamento de sessões...')
+        console.log('🔐 Inicializando autenticação com rastreamento avançado de sessões...')
         
         const { data: { session }, error } = await supabase.auth.getSession()
         
@@ -286,7 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         setInitialized(true)
-        console.log('✅ Autenticação inicializada com rastreamento de sessões')
+        console.log('✅ Autenticação inicializada com rastreamento avançado')
         
       } catch (error) {
         console.error('❌ Erro na inicialização:', error)
@@ -304,7 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (event, session) => {
         if (!mounted) return
         
-        console.log('🔄 Auth state changed (com sessões):', event)
+        console.log('🔄 Auth state changed (sistema avançado):', event)
         debouncedUpdateUserState(session)
       }
     )
@@ -318,7 +368,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       // Remover sessão antes do logout
-      await removeSession()
+      if (user?.id) {
+        await removeUserSession(user.id)
+      }
       await supabase.auth.signOut()
       await updateUserState(null)
     } catch (error) {

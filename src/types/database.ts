@@ -2,14 +2,26 @@ export interface Usuario {
   id: string
   email: string
   nome: string
+  nome_completo?: string  // NOVO
+  telefone?: string       // NOVO
+  cpf?: string           // NOVO
+  data_nascimento?: string // NOVO
+  endereco?: string      // NOVO
   foto?: string
-  turma?: string
+  pelotao?: string
   role: 'admin' | 'user'
   status: 'pendente' | 'ativo' | 'expirado' | 'bloqueado'
   data_aprovacao?: string
   data_expiracao?: string
   aprovado_por?: string
   observacoes?: string
+  // CAMPOS DE PAGAMENTO - NOVOS
+  valor_pago?: number
+  data_pagamento?: string
+  comprovante_url?: string
+  comprovante_nome?: string
+  metodo_pagamento?: string
+  observacoes_pagamento?: string
   created_at: string
 }
 
@@ -43,18 +55,6 @@ export interface Alternativa {
   questao_id: string
   texto: string
   correta: boolean
-}
-
-export interface Tag {
-  id: string
-  nome: string
-  cor: string
-  created_at: string
-}
-
-export interface QuestaoTag {
-  questao_id: string
-  tag_id: string
 }
 
 export interface HistoricoEstudo {

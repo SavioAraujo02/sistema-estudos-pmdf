@@ -47,7 +47,7 @@ export function OfflineStatus() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="hidden sm:block fixed bottom-4 right-4 z-50">
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg text-sm ${
         status.online 
           ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'

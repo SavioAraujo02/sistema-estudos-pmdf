@@ -84,6 +84,7 @@ export default function EstudarPage() {
   const [showGerenciadorSessoesModal, setShowGerenciadorSessoesModal] = useState(false)
   
   // Novos estados para UX melhorada
+  const [mostrarNovidade, setMostrarNovidade] = useState(false)
   const [secaoAvancadaAberta, setSecaoAvancadaAberta] = useState(false)
   const [showMateriasModal, setShowMateriasModal] = useState(false)
   const [animarResultado, setAnimarResultado] = useState(false)
@@ -130,6 +131,11 @@ export default function EstudarPage() {
       await verificarProgressoSalvo()
     }
     inicializar()
+
+    // Verificar se já viu a novidade do PDF
+    if (!localStorage.getItem('viu_novidade_pdf')) {
+      setMostrarNovidade(true)
+    }
   }, [])
 
   useEffect(() => {
@@ -358,6 +364,11 @@ export default function EstudarPage() {
   }
 
   const [gerandoPdf, setGerandoPdf] = useState(false)
+
+  const fecharNovidade = () => {
+    setMostrarNovidade(false)
+    localStorage.setItem('viu_novidade_pdf', 'true')
+  }
 
   const gerarPdf = async () => {
     setGerandoPdf(true)
@@ -851,6 +862,29 @@ export default function EstudarPage() {
               <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full" />
               <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full" />
             </div>
+
+            {/* Banner novidade PDF */}
+            {mostrarNovidade && (
+              <div className="rounded-2xl border-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 p-4 sm:p-5 relative overflow-hidden">
+                <button
+                  onClick={fecharNovidade}
+                  className="absolute top-3 right-3 p-1 text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="flex items-start gap-3">
+                  <span className="text-3xl">🖨️</span>
+                  <div>
+                    <h3 className="font-semibold text-blue-900 dark:text-blue-200 text-sm sm:text-base">
+                      Novidade: Gerar PDF das questões!
+                    </h3>
+                    <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-400 mt-1">
+                      Agora você pode imprimir suas questões! Selecione matérias, filtros e quantidade, depois clique no botão <strong>PDF</strong> ao lado do Iniciar. O documento vem com espaço para marcar respostas, gabarito e explicações no final.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Sessão em andamento */}
             {temProgressoSalvo && resumoProgresso && (

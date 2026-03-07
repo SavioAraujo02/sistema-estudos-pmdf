@@ -15,13 +15,19 @@ export interface Notificacao {
   created_at: string
 }
 
-// Buscar notificações do usuário
+// ==================== TIPOS IGNORADOS ====================
+// Esses tipos são filtrados da listagem e da contagem
+const TIPOS_IGNORADOS = ['importacao_lote']
+
+// ==================== FUNÇÕES DE LEITURA ====================
+
+// Buscar notificações do usuário (filtrando ruído)
 export async function getNotificacoes(limite: number = 20): Promise<Notificacao[]> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('notificacoes')
       .select(`
         *,
@@ -30,6 +36,13 @@ export async function getNotificacoes(limite: number = 20): Promise<Notificacao[
       .eq('usuario_id', user.id)
       .order('created_at', { ascending: false })
       .limit(limite)
+
+    // Filtrar tipos ignorados
+    for (const tipo of TIPOS_IGNORADOS) {
+      query = query.neq('tipo', tipo)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Erro ao buscar notificações:', error)
@@ -42,6 +55,39 @@ export async function getNotificacoes(limite: number = 20): Promise<Notificacao[
     return []
   }
 }
+
+// Contar notificações não lidas (filtrando ruído)
+export async function contarNaoLidas(): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return 0
+
+    let query = supabase
+      .from('notificacoes')
+      .select('id', { count: 'exact' })
+      .eq('usuario_id', user.id)
+      .eq('lida', false)
+
+    // Filtrar tipos ignorados
+    for (const tipo of TIPOS_IGNORADOS) {
+      query = query.neq('tipo', tipo)
+    }
+
+    const { count, error } = await query
+
+    if (error) {
+      console.error('Erro ao contar não lidas:', error)
+      return 0
+    }
+
+    return count || 0
+  } catch (error) {
+    console.error('Erro inesperado ao contar não lidas:', error)
+    return 0
+  }
+}
+
+// ==================== FUNÇÕES DE AÇÃO ====================
 
 // Marcar notificação como lida
 export async function marcarComoLida(notificacaoId: string): Promise<boolean> {
@@ -66,13 +112,13 @@ export async function marcarComoLida(notificacaoId: string): Promise<boolean> {
   }
 }
 
-// Marcar todas como lidas
+// Marcar todas como lidas (só as visíveis, ignora importacao_lote)
 export async function marcarTodasComoLidas(): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false
 
-    const { error } = await supabase
+    let query = supabase
       .from('notificacoes')
       .update({ 
         lida: true,
@@ -80,6 +126,13 @@ export async function marcarTodasComoLidas(): Promise<boolean> {
       })
       .eq('usuario_id', user.id)
       .eq('lida', false)
+
+    // Só marca como lidas as que o usuário realmente vê
+    for (const tipo of TIPOS_IGNORADOS) {
+      query = query.neq('tipo', tipo)
+    }
+
+    const { error } = await query
 
     if (error) {
       console.error('Erro ao marcar todas como lidas:', error)
@@ -113,56 +166,35 @@ export async function excluirNotificacao(notificacaoId: string): Promise<boolean
   }
 }
 
-// Contar notificações não lidas
-export async function contarNaoLidas(): Promise<number> {
+// Excluir todas as notificações lidas do usuário (limpeza)
+export async function excluirTodasLidas(): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return 0
+    if (!user) return false
 
-    const { count, error } = await supabase
+    const { error } = await supabase
       .from('notificacoes')
-      .select('id', { count: 'exact' })
+      .delete()
       .eq('usuario_id', user.id)
-      .eq('lida', false)
+      .eq('lida', true)
 
     if (error) {
-      console.error('Erro ao contar não lidas:', error)
-      return 0
+      console.error('Erro ao excluir notificações lidas:', error)
+      return false
     }
 
-    return count || 0
+    return true
   } catch (error) {
-    console.error('Erro inesperado ao contar não lidas:', error)
-    return 0
+    console.error('Erro inesperado ao excluir lidas:', error)
+    return false
   }
 }
 
 // ==================== FUNÇÕES PARA CRIAR NOTIFICAÇÕES ====================
 
-// Notificar sobre nova questão
+// Notificar sobre nova questão — SÓ notifica admins (evita spam em massa)
 export async function notificarNovaQuestao(materiaId: string, questaoId: string, autorId: string) {
   try {
-    console.log('🔔 Iniciando notificação de nova questão:', { materiaId, questaoId, autorId })
-    
-    // Buscar todos os usuários ativos (INCLUINDO o autor)
-    const { data: usuarios, error: usuariosError } = await supabase
-      .from('usuarios')
-      .select('id, nome, email')
-      .eq('status', 'ativo')
-      // REMOVIDO: .neq('id', autorId) - agora inclui o autor
-
-    console.log('👥 Usuários encontrados:', usuarios?.length || 0)
-
-    if (usuariosError || !usuarios) {
-      console.error('❌ Erro ao buscar usuários para notificação:', usuariosError)
-      return
-    }
-
-    if (usuarios.length === 0) {
-      console.log('⚠️ Nenhum usuário ativo encontrado')
-      return
-    }
-
     // Buscar nome da matéria
     const { data: materia } = await supabase
       .from('materias')
@@ -170,45 +202,40 @@ export async function notificarNovaQuestao(materiaId: string, questaoId: string,
       .eq('id', materiaId)
       .single()
 
-    const notificacoes = usuarios.map(usuario => ({
-      usuario_id: usuario.id,
+    // Notificar só o autor (confirmação) — não spama 78 usuários
+    const notificacao = {
+      usuario_id: autorId,
       tipo: 'nova_questao',
-      titulo: usuario.id === autorId ? 'Questão criada com sucesso!' : 'Nova questão disponível!',
-      mensagem: usuario.id === autorId 
-        ? `Você criou uma nova questão em ${materia?.nome || 'uma matéria'}`
-        : `Uma nova questão foi adicionada em ${materia?.nome || 'uma matéria'}`,
+      titulo: 'Questão criada com sucesso!',
+      mensagem: `Nova questão adicionada em ${materia?.nome || 'uma matéria'}`,
       questao_id: questaoId,
       usuario_origem_id: autorId,
       dados_extras: { materia_id: materiaId }
-    }))
+    }
 
     const { error } = await supabase
       .from('notificacoes')
-      .insert(notificacoes)
+      .insert([notificacao])
 
     if (error) {
-      console.error('❌ Erro ao criar notificações de nova questão:', error)
-    } else {
-      console.log('✅ Notificações de nova questão enviadas:', notificacoes.length)
+      console.error('Erro ao criar notificação de nova questão:', error)
     }
   } catch (error) {
-    console.error('💥 Erro inesperado ao notificar nova questão:', error)
+    console.error('Erro inesperado ao notificar nova questão:', error)
   }
 }
 
 // Notificar sobre nova matéria
 export async function notificarNovaMateria(materiaId: string, autorId: string) {
   try {
-    // Buscar todos os usuários ativos (exceto o autor)
-    const { data: usuarios, error: usuariosError } = await supabase
+    const { data: usuarios } = await supabase
       .from('usuarios')
       .select('id')
       .eq('status', 'ativo')
       .neq('id', autorId)
 
-    if (usuariosError || !usuarios) return
+    if (!usuarios || usuarios.length === 0) return
 
-    // Buscar nome da matéria
     const { data: materia } = await supabase
       .from('materias')
       .select('nome')
@@ -225,7 +252,6 @@ export async function notificarNovaMateria(materiaId: string, autorId: string) {
     }))
 
     await supabase.from('notificacoes').insert(notificacoes)
-    console.log('✅ Notificações de nova matéria enviadas:', notificacoes.length)
   } catch (error) {
     console.error('Erro ao notificar nova matéria:', error)
   }
@@ -234,7 +260,6 @@ export async function notificarNovaMateria(materiaId: string, autorId: string) {
 // Notificar sobre novo comentário
 export async function notificarNovoComentario(questaoId: string, comentarioId: string, autorId: string) {
   try {
-    // Buscar usuários que já comentaram nesta questão (exceto o autor do novo comentário)
     const { data: comentariosAnteriores } = await supabase
       .from('comentarios')
       .select('usuario_id')
@@ -243,9 +268,7 @@ export async function notificarNovoComentario(questaoId: string, comentarioId: s
 
     if (!comentariosAnteriores) return
 
-    // Pegar IDs únicos
     const usuariosParaNotificar = [...new Set(comentariosAnteriores.map(c => c.usuario_id))]
-
     if (usuariosParaNotificar.length === 0) return
 
     const notificacoes = usuariosParaNotificar.map(usuarioId => ({
@@ -259,7 +282,6 @@ export async function notificarNovoComentario(questaoId: string, comentarioId: s
     }))
 
     await supabase.from('notificacoes').insert(notificacoes)
-    console.log('✅ Notificações de novo comentário enviadas:', notificacoes.length)
   } catch (error) {
     console.error('Erro ao notificar novo comentário:', error)
   }
@@ -268,7 +290,6 @@ export async function notificarNovoComentario(questaoId: string, comentarioId: s
 // Notificar sobre curtida no comentário
 export async function notificarCurtidaComentario(comentarioId: string, autorCurtidaId: string) {
   try {
-    // Buscar o autor do comentário
     const { data: comentario } = await supabase
       .from('comentarios')
       .select('usuario_id, questao_id')
@@ -277,7 +298,7 @@ export async function notificarCurtidaComentario(comentarioId: string, autorCurt
 
     if (!comentario || comentario.usuario_id === autorCurtidaId) return
 
-    // Verificar se já existe notificação similar recente (últimas 24h)
+    // Evitar spam: não notifica se já notificou nas últimas 24h
     const ontemMs = Date.now() - (24 * 60 * 60 * 1000)
     const { data: notificacaoExistente } = await supabase
       .from('notificacoes')
@@ -288,9 +309,9 @@ export async function notificarCurtidaComentario(comentarioId: string, autorCurt
       .gte('created_at', new Date(ontemMs).toISOString())
       .single()
 
-    if (notificacaoExistente) return // Não spam de notificações
+    if (notificacaoExistente) return
 
-    const notificacao = {
+    await supabase.from('notificacoes').insert([{
       usuario_id: comentario.usuario_id,
       tipo: 'curtida_comentario',
       titulo: 'Seu comentário foi curtido!',
@@ -298,46 +319,20 @@ export async function notificarCurtidaComentario(comentarioId: string, autorCurt
       questao_id: comentario.questao_id,
       comentario_id: comentarioId,
       usuario_origem_id: autorCurtidaId
-    }
-
-    await supabase.from('notificacoes').insert([notificacao])
-    console.log('✅ Notificação de curtida enviada')
+    }])
   } catch (error) {
     console.error('Erro ao notificar curtida:', error)
   }
 }
 
-// Notificar sobre importação em lote
-export async function notificarImportacaoLote(materiaId: string, quantidadeQuestoes: number, autorId: string) {
-  try {
-    if (quantidadeQuestoes < 5) return // Só notificar importações grandes
-
-    const { data: usuarios } = await supabase
-      .from('usuarios')
-      .select('id')
-      .eq('status', 'ativo')
-      .neq('id', autorId)
-
-    if (!usuarios) return
-
-    const { data: materia } = await supabase
-      .from('materias')
-      .select('nome')
-      .eq('id', materiaId)
-      .single()
-
-    const notificacoes = usuarios.map(usuario => ({
-      usuario_id: usuario.id,
-      tipo: 'importacao_lote',
-      titulo: 'Muitas questões novas!',
-      mensagem: `${quantidadeQuestoes} questões foram adicionadas em ${materia?.nome}`,
-      usuario_origem_id: autorId,
-      dados_extras: { materia_id: materiaId, quantidade: quantidadeQuestoes }
-    }))
-
-    await supabase.from('notificacoes').insert(notificacoes)
-    console.log('✅ Notificações de importação em lote enviadas:', notificacoes.length)
-  } catch (error) {
-    console.error('Erro ao notificar importação em lote:', error)
-  }
+// Importação em lote — NÃO NOTIFICA MAIS (era spam)
+// Mantida como no-op para não quebrar código que chama essa função
+export async function notificarImportacaoLote(
+  _materiaId: string, 
+  _quantidadeQuestoes: number, 
+  _autorId: string
+) {
+  // Desativada intencionalmente — notificações de importação em lote
+  // eram ruído e poluíam o sino dos usuários.
+  return
 }

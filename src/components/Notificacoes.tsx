@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Bell, X, Check, Trash2, Eye, CheckCheck } from 'lucide-react'
-import { getNotificacoes, marcarComoLida, excluirNotificacao, contarNaoLidas, marcarTodasComoLidas } from '@/lib/notificacoes'
+import { getNotificacoes, marcarComoLida, excluirNotificacao, contarNaoLidas, marcarTodasComoLidas, excluirTodasLidas } from '@/lib/notificacoes'
 
 interface Notificacao {
   id: string
@@ -82,6 +82,13 @@ export function Notificacoes() {
         }
         return prev.filter(n => n.id !== id)
       })
+    }
+  }
+
+  const handleLimparLidas = async () => {
+    const sucesso = await excluirTodasLidas()
+    if (sucesso) {
+      setNotificacoes(prev => prev.filter(n => !n.lida))
     }
   }
 
@@ -240,11 +247,17 @@ export function Notificacoes() {
 
           {/* Footer */}
           {notificacoes.length > 0 && (
-            <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+            <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+              <button
+                onClick={handleLimparLidas}
+                className="text-sm text-red-500 hover:underline"
+              >
+                Limpar lidas
+              </button>
               <button
                 onClick={carregarNotificacoes}
                 disabled={carregando}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
               >
                 {carregando ? 'Atualizando...' : 'Atualizar'}
               </button>

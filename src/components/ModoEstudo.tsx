@@ -730,7 +730,7 @@ useEffect(() => {
                       <span className={`font-medium w-6 ${isEliminada ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
                         {String.fromCharCode(97 + index)})
                       </span>
-                      <span className={`flex-1 ${isEliminada ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>
+                      <span className={`flex-1 text-justify ${isEliminada ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>
                         {alternativa.texto}
                       </span>
                       {mostrarResposta && alternativa.correta && (
@@ -768,7 +768,7 @@ useEffect(() => {
             <h4 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
               💡 Explicação
             </h4>
-            <p className="text-gray-700 dark:text-gray-300">
+            <p className="text-gray-700 dark:text-gray-300 text-justify">
               {questao.explicacao}
             </p>
           </div>

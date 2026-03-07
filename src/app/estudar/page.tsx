@@ -1,227 +1,750 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { Play, Settings, Trophy, Clock, Target, BarChart3, Infinity, Filter, Users, Zap, RefreshCw, BookOpen, Layers, ChevronDown, ChevronUp, X, Check, Shuffle, ListOrdered, Search, Sparkles, ArrowRight, RotateCcw, Hash, Flame, AlertTriangle, Eye, EyeOff, SlidersHorizontal } from 'lucide-react'
+import { GerenciadorSessoes } from '@/components/GerenciadorSessoes'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/components/AuthProvider'
-import { getEstatisticasEstudo, zerarEstatisticasUsuario, getAtividadeRecente, EstatisticasCompletas, AtividadeRecenteDB } from '@/lib/estudo'
-import { getMateriasComEstatisticas } from '@/lib/materias'
+import { ModoEstudo } from '@/components/ModoEstudo'
+import { SeletorAssuntos } from '@/components/SeletorAssuntos'
+import { getQuestoesParaEstudo, getEstatisticasEstudo, QuestaoEstudo } from '@/lib/estudo'
+import { getMaterias, getMateriasComEstatisticas } from '@/lib/materias'
+import { supabase } from '@/lib/supabase'
 import { 
-  Clock, Target, BookOpen, Zap, Users, Settings, 
-  Plus, BarChart3, AlertCircle, CheckCircle, Trash2, RefreshCw, Calendar,
-  Flame, Trophy, Star, Activity, Smartphone, Shield,
-  ChevronRight, Play, RotateCcw, Bell,
-  Crown, Sparkles, ArrowRight
-} from 'lucide-react'
-import Link from 'next/link'
+  salvarProgressoSessao, 
+  buscarProgressoSessao, 
+  atualizarQuestaoAtual, 
+  finalizarSessao as finalizarProgressoSessao, 
+  abandonarSessao, 
+  temSessaoEmAndamento, 
+  getResumoSessao 
+} from '@/lib/progresso'
+import { FiltrosInteligentes } from '@/components/FiltrosInteligentes'
+import { getEstatisticasFiltros } from '@/lib/estudo'
 
-interface MetaEstudo {
-  questoesDiarias: number
-  questoesSemanais: number
-  tempoMinimoMinutos: number
-  progressoDiario: number
-  metaDiariaAlcancada: boolean
+interface ResultadoSessao {
+  totalQuestoes: number
+  acertos: number
+  erros: number
+  percentual: number
+  tempo: number
+  respostas: any[]
 }
 
-interface Conquista {
-  id: string
-  nome: string
-  descricao: string
-  icone: string
-  desbloqueada: boolean
-  progresso: number
-  meta: number
+interface ConfiguracaoSessao {
+  materiaId?: string
+  materiasSelecionadas?: string[]
+  assuntoIds: string[]
+  numeroQuestoes: number | 'todas'
+  modoEstudo: 'normal' | 'revisao' | 'rapido'
+  salvarHistorico: boolean
+  dificuldade?: 'facil' | 'medio' | 'dificil'
+  anoProva?: number
+  banca?: string
+  apenasNaoRespondidas?: boolean
+  apenasErradas?: boolean
+  revisaoQuestoesDificeis?: boolean
+  embaralhar?: boolean
+  nomeSessao?: string
+  corSessao?: string
 }
 
-interface AlertaInteligente {
-  id: string
-  tipo: 'motivacao' | 'alerta' | 'parabens' | 'sugestao'
-  titulo: string
-  mensagem: string
-  acao?: { texto: string; link: string }
-  icone: string
-}
 
-export default function DashboardPage() {
-  const { isAdmin, user, activeUsers } = useAuth()
-  const [estatisticas, setEstatisticas] = useState<EstatisticasCompletas | null>(null)
+export default function EstudarPage() {
+  const { isAdmin } = useAuth()
+  const [modo, setModo] = useState<'configuracao' | 'estudando' | 'resultado'>('configuracao')
   const [materias, setMaterias] = useState<any[]>([])
-  const [metaEstudo, setMetaEstudo] = useState<MetaEstudo | null>(null)
-  const [atividadeRecente, setAtividadeRecente] = useState<AtividadeRecenteDB[]>([])
-  const [conquistas, setConquistas] = useState<Conquista[]>([])
-  const [alertas, setAlertas] = useState<AlertaInteligente[]>([])
-  const [loading, setLoading] = useState(true)
-  const [mostrarModalZerar, setMostrarModalZerar] = useState(false)
-  const [zerandoEstatisticas, setZerandoEstatisticas] = useState(false)
-  type AbaType = 'visao-geral' | 'performance' | 'metas' | 'conquistas'
-  const [abaAtiva, setAbaAtiva] = useState<AbaType>('visao-geral')
-  const [isClient, setIsClient] = useState(false)
+  const [questoes, setQuestoes] = useState<QuestaoEstudo[]>([])
+  const [resultado, setResultado] = useState<ResultadoSessao | null>(null)
+  const [estatisticas, setEstatisticas] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [configuracao, setConfiguracao] = useState<ConfiguracaoSessao>({
+    materiasSelecionadas: [],
+    assuntoIds: [],
+    numeroQuestoes: 10,
+    modoEstudo: 'normal',
+    salvarHistorico: true,
+    embaralhar: false,
+    nomeSessao: '',
+    corSessao: '#3B82F6'
+  })
+  const [temProgressoSalvo, setTemProgressoSalvo] = useState(false)
+  const [resumoProgresso, setResumoProgresso] = useState<any>(null)
+  const [carregandoProgresso, setCarregandoProgresso] = useState(false)
+  const [carregandoDados, setCarregandoDados] = useState(true)
+
+  const [buscaMateria, setBuscaMateria] = useState('')
+
+  const [sessoes, setSessoes] = useState<any[]>([])
+  const [carregandoSessoes, setCarregandoSessoes] = useState(false)
+  const [showGerenciadorSessoes, setShowGerenciadorSessoes] = useState(false)
+  const [showGerenciadorSessoesModal, setShowGerenciadorSessoesModal] = useState(false)
+  
+  // Novos estados para UX melhorada
+  const [secaoAvancadaAberta, setSecaoAvancadaAberta] = useState(false)
+  const [showMateriasModal, setShowMateriasModal] = useState(false)
+  const [animarResultado, setAnimarResultado] = useState(false)
+  
+  const [estatisticasFiltros, setEstatisticasFiltros] = useState({
+    totalQuestoes: 0,
+    naoRespondidas: 0,
+    comErros: 0,
+    dificeis: 0
+  })
+  
+  const bottomRef = useRef<HTMLDivElement>(null)
+  
+  useEffect(() => {
+    setConfiguracao(prev => ({
+      ...prev,
+      salvarHistorico: prev.modoEstudo !== 'rapido'
+    }))
+  }, [configuracao.modoEstudo])
 
   useEffect(() => {
-    setIsClient(true)
-    carregarDados()
-  }, [isAdmin])
-
-  const carregarDados = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
-    
-    try {
-      const [statsData, materiasData, atividadeData] = await Promise.all([
-        getEstatisticasEstudo().catch(() => null),
-        getMateriasComEstatisticas().catch(() => []),
-        getAtividadeRecente().catch(() => [])
-      ])
-
-      const stats = statsData || {
-        totalRespostas: 0, acertos: 0, percentualAcertos: 0, porMateria: {},
-        sequenciaAtual: 0, melhorSequencia: 0, tempoMedioResposta: 0,
-        questoesHoje: 0, tempoEstudoHoje: 0, diasConsecutivos: 0,
-        ultimaAtividade: new Date().toISOString()
+    const inicializar = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const modoQuestao = urlParams.get('modo')
+      
+      if (modoQuestao === 'questao-especifica') {
+        const dadosQuestao = localStorage.getItem('estudo_questao_especifica')
+        if (dadosQuestao) {
+          try {
+            const dados = JSON.parse(dadosQuestao)
+            setQuestoes(dados.questoes)
+            setConfiguracao(dados.configuracao)
+            setModo('estudando')
+            localStorage.removeItem('estudo_questao_especifica')
+            console.log('✅ Questão específica carregada:', dados.questoes[0].enunciado.substring(0, 50) + '...')
+            return
+          } catch (error) {
+            console.error('Erro ao carregar questão específica:', error)
+          }
+        }
       }
+  
+      await carregarDados()
+      await verificarProgressoSalvo()
+    }
+    inicializar()
+  }, [])
 
-      setEstatisticas(stats)
-      setMaterias(materiasData)
-      setAtividadeRecente(atividadeData)
+  useEffect(() => {
+    const atualizarEstatisticasFiltros = async () => {
+      const materiasParaStats = configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0 
+        ? configuracao.materiasSelecionadas 
+        : configuracao.materiaId
 
-      // Metas (localStorage ok — é preferência pessoal)
-      const metaSalva = localStorage.getItem('meta_estudo')
-      const metaPadrao = { questoesDiarias: 20, questoesSemanais: 100, tempoMinimoMinutos: 30 }
-      const meta = metaSalva ? { ...metaPadrao, ...JSON.parse(metaSalva) } : metaPadrao
-      const progDiario = Math.min((stats.questoesHoje / meta.questoesDiarias) * 100, 100)
-      setMetaEstudo({
-        ...meta,
-        progressoDiario: progDiario,
-        metaDiariaAlcancada: stats.questoesHoje >= meta.questoesDiarias
+      const stats = await getEstatisticasFiltros(materiasParaStats)
+      setEstatisticasFiltros(stats)
+    }
+    
+    atualizarEstatisticasFiltros()
+  }, [configuracao.materiasSelecionadas, configuracao.materiaId])
+
+  // Limpar assuntos selecionados quando mudar de matéria ou selecionar múltiplas
+  useEffect(() => {
+    const qtd = configuracao.materiasSelecionadas?.length || 0
+    if (qtd !== 1 && configuracao.assuntoIds.length > 0) {
+      setConfiguracao(prev => ({...prev, assuntoIds: []}))
+    }
+  }, [configuracao.materiasSelecionadas])
+
+  useEffect(() => {
+    carregarSessoesAtivas()
+  }, [])
+
+  // Animar resultado quando entrar na tela
+  useEffect(() => {
+    if (modo === 'resultado') {
+      setTimeout(() => setAnimarResultado(true), 100)
+    } else {
+      setAnimarResultado(false)
+    }
+  }, [modo])
+
+  const filtrarQuestoesRevisao = async (questoes: QuestaoEstudo[]): Promise<QuestaoEstudo[]> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        console.log('Usuário não logado, usando questões normais')
+        return questoes
+      }
+  
+      const { data: historico, error } = await supabase
+        .from('historico_estudos')
+        .select('questao_id, acertou')
+        .eq('usuario_id', user.id)
+        .eq('acertou', false)
+  
+      if (error) {
+        console.error('Erro ao buscar histórico:', error)
+        return questoes
+      }
+  
+      if (!historico || historico.length === 0) {
+        console.log('Nenhuma questão errada encontrada. Mostrando questões aleatórias.')
+        for (let i = questoes.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [questoes[i], questoes[j]] = [questoes[j], questoes[i]]
+        }
+        return questoes
+      }
+  
+      const questoesErradasIds = [...new Set(historico.map(h => h.questao_id))]
+      const questoesFiltradas = questoes.filter(q => questoesErradasIds.includes(q.id))
+  
+      if (questoesFiltradas.length === 0) {
+        console.log('Questões de revisão não disponíveis no conjunto atual. Usando questões normais.')
+        return questoes
+      }
+  
+      console.log(`Modo revisão: ${questoesFiltradas.length} questões para revisar de ${questoesErradasIds.length} erros totais`)
+      return questoesFiltradas
+      
+    } catch (error) {
+      console.error('Erro no modo revisão:', error)
+      return questoes
+    }
+  }
+
+  const verificarProgressoSalvo = async () => {
+    try {
+      const temProgresso = await temSessaoEmAndamento()
+      setTemProgressoSalvo(temProgresso)
+      
+      if (temProgresso) {
+        const resumo = await getResumoSessao()
+        setResumoProgresso(resumo)
+        console.log('📖 Sessão em andamento encontrada:', resumo)
+      }
+    } catch (error) {
+      console.error('Erro ao verificar progresso:', error)
+    }
+  }
+  
+  const continuarSessaoSalva = async () => {
+    setCarregandoProgresso(true)
+    try {
+      const progresso = await buscarProgressoSessao()
+      if (!progresso) {
+        alert('Erro: Sessão não encontrada.')
+        setCarregandoProgresso(false)
+        return
+      }
+  
+      console.log('📖 Restaurando sessão:', progresso)
+  
+      setConfiguracao(progresso.configuracao)
+      
+      const { data: questoesData, error } = await supabase
+        .from('questoes')
+        .select(`
+          id,
+          enunciado,
+          tipo,
+          explicacao,
+          materias!inner(nome),
+          alternativas(id, texto, correta)
+        `)
+        .in('id', progresso.questoes_ids)
+  
+      if (error || !questoesData) {
+        console.error('Erro ao buscar questões salvas:', error)
+        alert('Erro ao carregar questões salvas.')
+        setCarregandoProgresso(false)
+        return
+      }
+  
+      const questoesOrdenadas = progresso.questoes_ids.map(id => 
+        questoesData.find(q => q.id === id)
+      ).filter(Boolean)
+  
+      const questoesFormatadas = questoesOrdenadas.map((item: any) => ({
+        id: item.id,
+        enunciado: item.enunciado,
+        tipo: item.tipo,
+        explicacao: item.explicacao,
+        materia: { nome: item.materias?.nome || 'Sem matéria' },
+        alternativas: item.alternativas || []
+      }))
+  
+      const dadosRestauracao = {
+        questoes: questoesFormatadas,
+        questaoAtual: progresso.questao_atual,
+        respostasAnteriores: Array.isArray(progresso.respostas) ? progresso.respostas : [],
+        tempoInicio: new Date(progresso.tempo_inicio).getTime()
+      }
+  
+      console.log('🔄 Dados para restauração:', dadosRestauracao)
+  
+      setQuestoes(questoesFormatadas)
+      localStorage.setItem('sessao_restauracao', JSON.stringify(dadosRestauracao))
+      setModo('estudando')
+      
+      console.log('✅ Sessão restaurada:', {
+        questoes: questoesFormatadas.length,
+        questaoAtual: progresso.questao_atual,
+        respostas: progresso.respostas?.length || 0
       })
-
-      // Conquistas (baseadas em dados REAIS do Supabase)
-      setConquistas(calcularConquistas(stats))
-
-      // Alertas
-      setAlertas(gerarAlertas(stats, materiasData, meta))
-
     } catch (error) {
-      console.error('Erro ao carregar dashboard:', error)
+      console.error('Erro ao continuar sessão:', error)
+      alert('Erro inesperado ao continuar sessão.')
     } finally {
-      if (!silent) setLoading(false)
+      setCarregandoProgresso(false)
     }
-  }, [isAdmin])
-
-  // ✅ Conquistas baseadas em dados reais
-  const calcularConquistas = (stats: EstatisticasCompletas): Conquista[] => [
-    { id: 'primeira', nome: 'Primeiro Passo', descricao: 'Responda 1 questão', icone: '🎯', desbloqueada: stats.totalRespostas >= 1, progresso: Math.min(stats.totalRespostas, 1), meta: 1 },
-    { id: 'dez', nome: 'Iniciante', descricao: 'Responda 10 questões', icone: '📚', desbloqueada: stats.totalRespostas >= 10, progresso: Math.min(stats.totalRespostas, 10), meta: 10 },
-    { id: 'cinquenta', nome: 'Estudioso', descricao: 'Responda 50 questões', icone: '📖', desbloqueada: stats.totalRespostas >= 50, progresso: Math.min(stats.totalRespostas, 50), meta: 50 },
-    { id: 'cem', nome: 'Centurião', descricao: 'Responda 100 questões', icone: '💯', desbloqueada: stats.totalRespostas >= 100, progresso: Math.min(stats.totalRespostas, 100), meta: 100 },
-    { id: 'seq5', nome: 'Aquecendo', descricao: '5 acertos seguidos', icone: '🔥', desbloqueada: stats.melhorSequencia >= 5, progresso: Math.min(stats.melhorSequencia, 5), meta: 5 },
-    { id: 'seq10', nome: 'Em Chamas', descricao: '10 acertos seguidos', icone: '🔥', desbloqueada: stats.melhorSequencia >= 10, progresso: Math.min(stats.melhorSequencia, 10), meta: 10 },
-    { id: 'dias3', nome: 'Consistente', descricao: '3 dias consecutivos', icone: '📅', desbloqueada: stats.diasConsecutivos >= 3, progresso: Math.min(stats.diasConsecutivos, 3), meta: 3 },
-    { id: 'dias7', nome: 'Dedicado', descricao: '7 dias consecutivos', icone: '🗓️', desbloqueada: stats.diasConsecutivos >= 7, progresso: Math.min(stats.diasConsecutivos, 7), meta: 7 },
-    { id: 'taxa70', nome: 'Bom Desempenho', descricao: '70% de acertos (min 10)', icone: '👍', desbloqueada: stats.percentualAcertos >= 70 && stats.totalRespostas >= 10, progresso: Math.min(stats.percentualAcertos, 70), meta: 70 },
-    { id: 'taxa80', nome: 'Expert', descricao: '80% de acertos (min 20)', icone: '🏆', desbloqueada: stats.percentualAcertos >= 80 && stats.totalRespostas >= 20, progresso: Math.min(stats.percentualAcertos, 80), meta: 80 },
-  ]
-
-  // ✅ Alertas inteligentes
-  const gerarAlertas = (stats: EstatisticasCompletas, mats: any[], meta: any): AlertaInteligente[] => {
-    const a: AlertaInteligente[] = []
-    
-    // Inatividade
-    if (stats.ultimaAtividade) {
-      const horas = (Date.now() - new Date(stats.ultimaAtividade).getTime()) / (1000 * 60 * 60)
-      if (horas > 24) a.push({ id: '1', tipo: 'motivacao', titulo: 'Que tal voltar aos estudos?', mensagem: `Você não estuda há ${Math.floor(horas)}h.`, acao: { texto: 'Estudar', link: '/estudar' }, icone: '📚' })
-    }
-    
-    // Próximo de conquistas
-    if (stats.totalRespostas >= 90 && stats.totalRespostas < 100) {
-      a.push({ id: '2', tipo: 'motivacao', titulo: 'Quase Centurião!', mensagem: `Faltam ${100 - stats.totalRespostas} questões!`, acao: { texto: 'Completar', link: '/estudar' }, icone: '💯' })
-    }
-    
-    // Sequência boa
-    if (stats.sequenciaAtual >= 5) {
-      a.push({ id: '3', tipo: 'parabens', titulo: 'Sequência incrível!', mensagem: `${stats.sequenciaAtual} acertos seguidos!`, acao: { texto: 'Continuar', link: '/estudar' }, icone: '🔥' })
-    }
-    
-    // Matéria com problema
-    const matProblema = mats.find(m => (m.total_respostas || 0) > 5 && (m.percentual_acertos || 0) < 60)
-    if (matProblema) {
-      a.push({ id: '4', tipo: 'sugestao', titulo: 'Atenção necessária', mensagem: `${matProblema.nome} com ${matProblema.percentual_acertos}% de acertos.`, acao: { texto: 'Revisar', link: `/estudar?materia=${matProblema.id}` }, icone: '⚠️' })
-    }
-
-    // Meta diária
-    const faltam = meta.questoesDiarias - stats.questoesHoje
-    if (faltam > 0 && faltam <= 5) {
-      a.push({ id: '5', tipo: 'motivacao', titulo: 'Quase na meta!', mensagem: `Faltam ${faltam} questões para a meta diária!`, acao: { texto: 'Completar', link: '/estudar' }, icone: '🎯' })
-    } else if (stats.questoesHoje >= meta.questoesDiarias) {
-      a.push({ id: '6', tipo: 'parabens', titulo: 'Meta alcançada!', mensagem: 'Parabéns pela dedicação!', icone: '🎉' })
-    }
-
-    return a.slice(0, 3)
   }
-
-  const zerarTodasEstatisticas = async () => {
-    setZerandoEstatisticas(true)
+  
+  const iniciarNovaSessao = async () => {
     try {
-      const sucesso = await zerarEstatisticasUsuario()
-      if (sucesso) {
-        localStorage.removeItem('meta_estudo')
-        localStorage.removeItem('atividade_recente')
-        localStorage.removeItem('ultima_atividade')
-        localStorage.removeItem('dias_consecutivos')
-        localStorage.removeItem('sequencia_atual')
-        localStorage.removeItem('melhor_sequencia')
-        await carregarDados()
-        setMostrarModalZerar(false)
-        alert('✅ Estatísticas zeradas com sucesso!')
-      } else {
-        alert('❌ Erro ao zerar estatísticas.')
-      }
+      await abandonarSessao()
+      setTemProgressoSalvo(false)
+      setResumoProgresso(null)
+      await iniciarSessao()
     } catch (error) {
-      console.error('Erro ao zerar:', error)
-      alert('❌ Erro inesperado.')
+      console.error('Erro ao iniciar nova sessão:', error)
+    }
+  }
+
+  const carregarDados = async () => {
+    console.log('Carregando dados do estudar...')
+    setCarregandoDados(true)
+    
+    try {
+      const [materiasData, statsData] = await Promise.all([
+        getMateriasComEstatisticas(),
+        getEstatisticasEstudo()
+      ])
+      
+      setMaterias(materiasData)
+      setEstatisticas(statsData)
+      
+      if (configuracao.materiaId) {
+        const statsFiltros = await getEstatisticasFiltros(configuracao.materiaId)
+        setEstatisticasFiltros(statsFiltros)
+      }
+      
+      console.log('✅ Dados carregados:', { materias: materiasData.length })
+    } catch (error) {
+      console.error('❌ Erro ao carregar dados:', error)
     } finally {
-      setZerandoEstatisticas(false)
+      setCarregandoDados(false)
     }
   }
 
-  const fmtTempo = (seg: number) => {
-    if (seg < 60) return `${seg}s`
-    const min = Math.floor(seg / 60)
-    const h = Math.floor(min / 60)
-    if (h > 0) return `${h}h ${min % 60}m`
-    return `${min}m ${seg % 60}s`
-  }
+  const getQuestoesDisponiveis = async (): Promise<number> => {
+    try {
+      let query = supabase.from('questoes').select('id', { count: 'exact' })
 
-  const fmtDataRelativa = (ds: string) => {
-    if (!isClient) return '...'
-    const diff = Math.floor((Date.now() - new Date(ds).getTime()) / 60000)
-    if (diff < 1) return 'Agora'
-    if (diff < 60) return `${diff}min atrás`
-    const h = Math.floor(diff / 60)
-    if (h < 24) return `${h}h atrás`
-    return `${Math.floor(h / 24)}d atrás`
-  }
+      if (configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0) {
+        query = query.in('materia_id', configuracao.materiasSelecionadas)
+      } else if (configuracao.materiaId) {
+        query = query.eq('materia_id', configuracao.materiaId)
+      }
+    
+      if (configuracao.dificuldade) {
+        query = query.eq('dificuldade', configuracao.dificuldade)
+      }
 
-  const getCorAlerta = (tipo: string) => {
-    const cores: Record<string, string> = {
-      motivacao: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20',
-      parabens: 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20',
-      sugestao: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20',
-      alerta: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20',
+      const { count } = await query
+      return count || 0
+    } catch (error) {
+      console.error('Erro ao contar questões:', error)
+      return 0
     }
-    return cores[tipo] || cores.motivacao
   }
 
-  // ==========================================
-  // LOADING
-  // ==========================================
-  if (loading) {
+  const iniciarSessao = async () => {
+    setLoading(true)
+    
+    console.log('💾 Iniciando nova sessão com progresso...')
+    
+    const questoesDisponiveis = await getQuestoesDisponiveis()
+    console.log('Questões disponíveis:', questoesDisponiveis)
+    
+    if (questoesDisponiveis === 0) {
+      alert('Nenhuma questão encontrada para os critérios selecionados.')
+      setLoading(false)
+      return
+    }
+
+    let limite: number
+    if (configuracao.numeroQuestoes === 'todas') {
+      limite = questoesDisponiveis
+    } else {
+      limite = Math.min(configuracao.numeroQuestoes as number, questoesDisponiveis)
+    }
+    
+    console.log('Iniciando sessão com:', { configuracao, questoesDisponiveis, limite })
+    
+    let questoesData: QuestaoEstudo[] = []
+
+    const materiasParaBusca = configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0 
+      ? configuracao.materiasSelecionadas 
+      : configuracao.materiaId
+
+    questoesData = await getQuestoesParaEstudo(materiasParaBusca, limite, undefined, {
+      assuntoIds: configuracao.assuntoIds,
+      dificuldade: configuracao.dificuldade,
+      anoProva: configuracao.anoProva,
+      banca: configuracao.banca,
+      apenasNaoRespondidas: configuracao.apenasNaoRespondidas,
+      apenasErradas: configuracao.apenasErradas,
+      revisaoQuestoesDificeis: configuracao.revisaoQuestoesDificeis,
+      embaralhar: configuracao.embaralhar
+    })
+    
+    console.log('Questões encontradas:', questoesData)
+    
+    if (questoesData.length === 0) {
+      alert('Nenhuma questão encontrada para os critérios selecionados.')
+      setLoading(false)
+      return
+    }
+    
+    switch (configuracao.modoEstudo) {
+      case 'revisao':
+        questoesData = await filtrarQuestoesRevisao(questoesData)
+        break
+        
+      case 'rapido':
+        console.log('Modo rápido: não salvará histórico')
+        break
+        
+      case 'normal':
+      default:
+        console.log('Modo normal: questões processadas')
+        break
+    }
+      
+    setQuestoes(questoesData)
+
+    await salvarProgressoSessao(
+      configuracao,
+      questoesData.map(q => q.id),
+      0,
+      []
+    )
+
+    setModo('estudando')
+    setLoading(false)
+  }
+
+  const finalizarSessaoEstudo = (resultados: ResultadoSessao) => {
+    finalizarProgressoSessao()
+    setResultado(resultados)
+    setModo('resultado')
+    carregarDados()
+    setTemProgressoSalvo(false)
+    setResumoProgresso(null)
+  }
+
+  const novaSessionao = () => {
+    setModo('configuracao')
+    setResultado(null)
+    setQuestoes([])
+  }
+
+  const carregarSessoesAtivas = async () => {
+    try {
+      setCarregandoSessoes(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+  
+      const { data: sessoesData, error } = await supabase
+        .from('progresso_sessao')
+        .select('*')
+        .eq('usuario_id', user.id)
+        .eq('finalizada', false)
+        .order('ultima_atividade', { ascending: false })
+        .limit(10)
+  
+      if (error) {
+        console.error('Erro ao carregar sessões:', error)
+        return
+      }
+  
+      setSessoes(sessoesData || [])
+    } catch (error) {
+      console.error('Erro inesperado ao carregar sessões:', error)
+    } finally {
+      setCarregandoSessoes(false)
+    }
+  }
+  
+  const continuarSessao = async (sessao: any) => {
+    try {
+      const { data: questoesData, error } = await supabase
+        .from('questoes')
+        .select(`
+          id,
+          enunciado,
+          tipo,
+          explicacao,
+          resposta_certo_errado,
+          imagem_url,
+          imagem_nome,
+          materias!inner(nome),
+          assuntos(id, nome, cor),
+          alternativas(id, texto, correta)
+        `)
+        .in('id', sessao.questoes_ids)
+  
+      if (error || !questoesData) {
+        alert('Erro ao carregar questões da sessão.')
+        return
+      }
+  
+      const questoesOrdenadas = sessao.questoes_ids.map((id: string) => 
+        questoesData.find(q => q.id === id)
+      ).filter(Boolean)
+  
+      const questoesFormatadas = questoesOrdenadas.map((item: any) => ({
+        id: item.id,
+        enunciado: item.enunciado,
+        tipo: item.tipo,
+        explicacao: item.explicacao,
+        resposta_certo_errado: item.resposta_certo_errado,
+        imagem_url: item.imagem_url,
+        imagem_nome: item.imagem_nome,
+        materia: { nome: item.materias?.nome || 'Sem matéria' },
+        assunto: item.assuntos ? {
+          id: item.assuntos.id,
+          nome: item.assuntos.nome,
+          cor: item.assuntos.cor
+        } : undefined,
+        alternativas: item.alternativas || []
+      }))
+  
+      const dadosRestauracao = {
+        questoes: questoesFormatadas,
+        questaoAtual: sessao.questao_atual,
+        respostasAnteriores: Array.isArray(sessao.respostas) ? sessao.respostas : [],
+        tempoInicio: new Date(sessao.tempo_inicio).getTime(),
+        sessaoId: sessao.id
+      }
+  
+      setQuestoes(questoesFormatadas)
+      setConfiguracao(sessao.configuracao)
+      localStorage.setItem('sessao_restauracao', JSON.stringify(dadosRestauracao))
+      setModo('estudando')
+      setShowGerenciadorSessoes(false)
+      
+    } catch (error) {
+      console.error('Erro ao continuar sessão:', error)
+      alert('Erro inesperado ao continuar sessão.')
+    }
+  }
+  
+  const excluirSessao = async (sessaoId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta sessão? O progresso será perdido.')) return
+
+    try {
+      const { error } = await supabase
+        .from('progresso_sessao')
+        .delete()
+        .eq('id', sessaoId)
+
+      if (error) {
+        console.error('Erro ao excluir sessão:', error)
+        alert('Erro ao excluir sessão.')
+        return
+      }
+
+      await carregarSessoesAtivas()
+    } catch (error) {
+      console.error('Erro inesperado ao excluir sessão:', error)
+      alert('Erro inesperado.')
+    }
+  }
+
+  const formatarTempo = (ms: number) => {
+    const segundos = Math.floor(ms / 1000)
+    const minutos = Math.floor(segundos / 60)
+    const seg = segundos % 60
+    return `${minutos}:${seg.toString().padStart(2, '0')}`
+  }
+
+  const getModoEstudoInfo = (modo: string) => {
+    const modos = {
+      'normal': { nome: 'Normal', desc: 'Estudo completo com histórico', icon: '📚', cor: 'blue' },
+      'revisao': { nome: 'Revisão', desc: 'Questões que você errou', icon: '🔄', cor: 'orange' },
+      'rapido': { nome: 'Rápido', desc: 'Sem salvar histórico', icon: '⚡', cor: 'yellow' }
+    }
+    
+    return modos[modo as keyof typeof modos] || modos['normal']
+  }
+
+  // Helpers para UI
+  const totalQuestoesDisp = materias.reduce((total, m) => total + (m.questoes_count || 0), 0)
+  
+  const materiasSelecionadasNomes = (configuracao.materiasSelecionadas || [])
+    .map(id => materias.find(m => m.id === id)?.nome)
+    .filter(Boolean)
+
+  const toggleMateria = (materiaId: string) => {
+    const selecionadas = configuracao.materiasSelecionadas || []
+    if (selecionadas.includes(materiaId)) {
+      setConfiguracao({
+        ...configuracao,
+        materiasSelecionadas: selecionadas.filter(id => id !== materiaId)
+      })
+    } else {
+      setConfiguracao({
+        ...configuracao,
+        materiasSelecionadas: [...selecionadas, materiaId]
+      })
+    }
+  }
+
+  // =============================================
+  // MODO ESTUDANDO
+  // =============================================
+  if (modo === 'estudando') {
     return (
       <ProtectedRoute>
-        <DashboardLayout title="Dashboard">
-          <div className="flex items-center justify-center h-64">
-            <div className="flex flex-col items-center gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Carregando...</p>
+        <DashboardLayout title={`${isAdmin ? '🧪 Teste' : '🎓 Estudo'} - ${getModoEstudoInfo(configuracao.modoEstudo).nome}`}>
+          <ModoEstudo 
+            questoes={questoes} 
+            onFinalizar={finalizarSessaoEstudo}
+            configuracao={configuracao}
+            isAdmin={isAdmin}
+          />
+        </DashboardLayout>
+      </ProtectedRoute>
+    )
+  }
+
+  // =============================================
+  // TELA DE RESULTADO
+  // =============================================
+  if (modo === 'resultado' && resultado) {
+    const emoji = resultado.percentual >= 90 ? '🏆' : resultado.percentual >= 80 ? '🎉' : resultado.percentual >= 60 ? '👍' : resultado.percentual >= 40 ? '💪' : '📚'
+    const mensagem = resultado.percentual >= 90 ? 'Excelente!' : resultado.percentual >= 80 ? 'Muito bom!' : resultado.percentual >= 60 ? 'Bom trabalho!' : resultado.percentual >= 40 ? 'Continue praticando!' : 'Não desista!'
+    const corPrincipal = resultado.percentual >= 70 ? 'emerald' : resultado.percentual >= 50 ? 'amber' : 'red'
+
+    return (
+      <ProtectedRoute>
+        <DashboardLayout title="Resultado da Sessão">
+          <div className="max-w-2xl lg:max-w-4xl mx-auto space-y-5 px-1">
+            
+            {/* Card principal do resultado */}
+            <div className={`relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-700 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+              {/* Barra de cor superior */}
+              <div className={`h-1.5 ${
+                corPrincipal === 'emerald' ? 'bg-emerald-500' : corPrincipal === 'amber' ? 'bg-amber-500' : 'bg-red-500'
+              }`} />
+              
+              <div className="p-6 sm:p-8 lg:p-10 text-center">
+                <div className={`text-6xl sm:text-7xl mb-3 transition-all duration-700 delay-200 ${animarResultado ? 'scale-100' : 'scale-50'}`}>
+                  {emoji}
+                </div>
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-1">
+                  {isAdmin ? 'Teste Finalizado!' : mensagem}
+                </h2>
+                <p className="text-gray-500 dark:text-gray-400 text-sm sm:text-base">
+                  {resultado.acertos} de {resultado.totalQuestoes} questões corretas
+                </p>
+                
+                {/* Percentual grande */}
+                <div className={`mt-6 mb-2 transition-all duration-700 delay-300 ${animarResultado ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
+                  <div className={`inline-flex items-center justify-center w-28 h-28 sm:w-32 sm:h-32 lg:w-40 lg:h-40 rounded-full border-4 ${
+                    corPrincipal === 'emerald' ? 'border-emerald-200 dark:border-emerald-800' : 
+                    corPrincipal === 'amber' ? 'border-amber-200 dark:border-amber-800' : 
+                    'border-red-200 dark:border-red-800'
+                  }`}>
+                    <div>
+                      <div className={`text-3xl sm:text-4xl lg:text-5xl font-bold ${
+                        corPrincipal === 'emerald' ? 'text-emerald-600' : 
+                        corPrincipal === 'amber' ? 'text-amber-600' : 
+                        'text-red-600'
+                      }`}>
+                        {resultado.percentual}%
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 -mt-0.5">acertos</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid de métricas */}
+            <div className={`grid grid-cols-3 lg:grid-cols-3 gap-3 lg:gap-4 transition-all duration-500 delay-400 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 lg:p-6 text-center">
+                <Trophy className="h-5 w-5 lg:h-6 lg:w-6 text-emerald-500 mx-auto mb-1.5" />
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{resultado.acertos}</div>
+                <div className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">Acertos</div>
+              </div>
+              
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 lg:p-6 text-center">
+                <Clock className="h-5 w-5 lg:h-6 lg:w-6 text-blue-500 mx-auto mb-1.5" />
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{formatarTempo(resultado.tempo)}</div>
+                <div className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">Tempo</div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 lg:p-6 text-center">
+                <Zap className="h-5 w-5 lg:h-6 lg:w-6 text-amber-500 mx-auto mb-1.5" />
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">
+                  {Math.round(resultado.tempo / resultado.totalQuestoes / 1000)}s
+                </div>
+                <div className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">Média/Q</div>
+              </div>
+            </div>
+
+            {/* Detalhes */}
+            <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 transition-all duration-500 delay-500 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-gray-400" />
+                Detalhes
+              </h3>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Modo</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {getModoEstudoInfo(configuracao.modoEstudo).icon} {getModoEstudoInfo(configuracao.modoEstudo).nome}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Matéria</span>
+                  <span className="font-medium text-gray-900 dark:text-white truncate ml-2">
+                    {configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0
+                      ? `${configuracao.materiasSelecionadas.length} matéria(s)`
+                      : configuracao.materiaId 
+                        ? materias.find(m => m.id === configuracao.materiaId)?.nome 
+                        : 'Todas'
+                    }
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Erros</span>
+                  <span className="font-medium text-red-500">{resultado.erros}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Ordem</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {configuracao.embaralhar ? '🎲 Aleatória' : '📋 Sequencial'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Botões de ação */}
+            <div className={`flex flex-col sm:flex-row gap-3 transition-all duration-500 delay-600 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <button
+                onClick={novaSessionao}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 lg:py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all font-medium lg:text-lg"
+              >
+                <RefreshCw className="h-4 w-4 lg:h-5 lg:w-5" />
+                Nova Sessão
+              </button>
+              <button
+                onClick={() => setModo('configuracao')}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 lg:py-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-[0.98] transition-all font-medium lg:text-lg"
+              >
+                <Settings className="h-4 w-4" />
+                Reconfigurar
+              </button>
             </div>
           </div>
         </DashboardLayout>
@@ -229,555 +752,618 @@ export default function DashboardPage() {
     )
   }
 
-  const totalQuestoes = materias.reduce((t, m) => t + (m.questoes_count || 0), 0)
-  const temDados = estatisticas && estatisticas.totalRespostas > 0
-  const materiasComProblemas = materias.filter(m => (m.percentual_acertos || 0) < 70 && (m.total_respostas || 0) > 0)
-
-  // ==========================================
-  // RENDER
-  // ==========================================
+  // =============================================
+  // TELA DE CONFIGURAÇÃO (PRINCIPAL)
+  // =============================================
   return (
     <ProtectedRoute>
-      <DashboardLayout title={isAdmin ? "Dashboard Admin" : "Meu Dashboard"}>
-        <div className="max-w-2xl lg:max-w-6xl mx-auto px-1 space-y-4 sm:space-y-5">
-
-          {/* ============================== */}
-          {/* HEADER */}
-          {/* ============================== */}
-          <div className={`rounded-2xl p-5 sm:p-6 lg:p-8 text-white relative overflow-hidden ${
-            isAdmin 
-              ? 'bg-gradient-to-br from-violet-600 to-indigo-700' 
-              : 'bg-gradient-to-br from-blue-600 to-cyan-600'
-          }`}>
-            <div className="relative z-10">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-0.5">
-                    {isAdmin ? 'Painel Admin' : `Olá, ${user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Estudante'}!`}
-                  </h2>
-                  {temDados ? (
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm opacity-90 mt-1">
-                      <span className="flex items-center gap-1"><Flame className="h-3.5 w-3.5" />{estatisticas!.diasConsecutivos}d seguidos</span>
-                      <span className="flex items-center gap-1"><Target className="h-3.5 w-3.5" />{estatisticas!.questoesHoje} hoje</span>
-                      <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{fmtDataRelativa(estatisticas!.ultimaAtividade)}</span>
-                    </div>
-                  ) : (
-                    <p className="text-sm opacity-80 mt-1">
-                      {isAdmin ? 'Gerencie questões e acompanhe o sistema' : 'Comece sua jornada de estudos!'}
+      <DashboardLayout title={isAdmin ? "🧪 Modo Teste" : "🎓 Configurar Estudo"}>
+        <div className="max-w-2xl lg:max-w-6xl mx-auto pb-28 sm:pb-6">
+          <div className="space-y-4 sm:space-y-5 px-1">
+            
+            {/* Header compacto */}
+            <div className={`rounded-2xl p-5 sm:p-6 lg:p-8 text-white relative overflow-hidden ${
+              isAdmin 
+                ? 'bg-gradient-to-br from-violet-600 to-indigo-700'
+                : 'bg-gradient-to-br from-blue-600 to-cyan-600'
+            }`}>
+              <div className="relative z-10">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-1">
+                      {isAdmin ? 'Modo Teste' : 'Nova Sessão de Estudo'}
+                    </h2>
+                    <p className="text-sm lg:text-base opacity-80">
+                      {isAdmin 
+                        ? 'Teste questões sem afetar estatísticas'
+                        : 'Configure e inicie sua sessão personalizada'
+                      }
                     </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 lg:px-4 lg:py-2 text-sm">
+                      <BookOpen className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                      <span className="font-medium">{totalQuestoesDisp}</span>
+                      <span className="opacity-80">questões</span>
+                    </div>
+                    {!isAdmin && estatisticas && estatisticas.totalRespostas > 0 && (
+                      <div className="hidden lg:inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-4 py-2 text-sm">
+                        <Target className="h-4 w-4" />
+                        <span className="font-medium">{estatisticas.percentualAcertos}%</span>
+                        <span className="opacity-80">acertos</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Decoração sutil */}
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full" />
+              <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full" />
+            </div>
+
+            {/* Sessão em andamento */}
+            {temProgressoSalvo && resumoProgresso && (
+              <div className="rounded-2xl border-2 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 sm:p-5">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 p-2 bg-amber-100 dark:bg-amber-900/40 rounded-xl">
+                    <Flame className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-amber-900 dark:text-amber-200 text-sm sm:text-base">
+                      Sessão em andamento
+                    </h3>
+                    <div className="mt-1.5 text-xs sm:text-sm text-amber-700 dark:text-amber-400 space-y-0.5">
+                      <p>Questão {resumoProgresso.questaoAtual} de {resumoProgresso.questoesTotais} · {resumoProgresso.respostasFeitas} respostas · {resumoProgresso.tempoDecorrido}</p>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={continuarSessaoSalva}
+                        disabled={carregandoProgresso}
+                        className="flex-1 sm:flex-none px-4 py-2.5 bg-amber-600 text-white rounded-xl hover:bg-amber-700 active:scale-[0.98] transition-all text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 min-h-[44px]"
+                      >
+                        {carregandoProgresso ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                        Continuar
+                      </button>
+                      <button
+                        onClick={iniciarNovaSessao}
+                        disabled={carregandoProgresso}
+                        className="px-4 py-2.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/30 active:scale-[0.98] transition-all text-sm font-medium disabled:opacity-50 min-h-[44px]"
+                      >
+                        Nova
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Progresso do usuário (compacto) */}
+            {!isAdmin && estatisticas && estatisticas.totalRespostas > 0 && (
+              <div className="grid grid-cols-3 lg:grid-cols-3 gap-2.5 lg:gap-4">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 lg:p-5 text-center">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{estatisticas.totalRespostas}</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Respondidas</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 lg:p-5 text-center">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-emerald-600">{estatisticas.acertos}</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Acertos</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 lg:p-5 text-center">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-violet-600">{estatisticas.percentualAcertos}%</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Taxa</div>
+                </div>
+              </div>
+            )}
+
+            {/* ==================== */}
+            {/* GRID RESPONSIVO: 2 colunas em telas grandes */}
+            {/* ==================== */}
+            <div className="lg:grid lg:grid-cols-2 lg:gap-5 space-y-4 sm:space-y-5 lg:space-y-0">
+              
+              {/* COLUNA ESQUERDA */}
+              <div className="space-y-4 sm:space-y-5">
+
+            {/* ==================== */}
+            {/* SEÇÃO: Modo de Estudo */}
+            {/* ==================== */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  Modo de Estudo
+                </h3>
+              </div>
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  {(['normal', 'revisao', 'rapido'] as const).map((m) => {
+                    const info = getModoEstudoInfo(m)
+                    const selecionado = configuracao.modoEstudo === m
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => setConfiguracao({...configuracao, modoEstudo: m})}
+                        className={`relative p-3 sm:p-4 rounded-xl border-2 transition-all active:scale-[0.97] text-center min-h-[88px] sm:min-h-[100px] flex flex-col items-center justify-center gap-1.5 ${
+                          selecionado
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-500/30'
+                            : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 bg-gray-50 dark:bg-gray-700/50'
+                        }`}
+                      >
+                        <span className="text-2xl">{info.icon}</span>
+                        <span className={`text-xs sm:text-sm font-semibold ${selecionado ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                          {info.nome}
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 leading-tight hidden sm:block lg:text-xs">
+                          {info.desc}
+                        </span>
+                        {selecionado && (
+                          <div className="absolute top-1.5 right-1.5 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                            <Check className="h-2.5 w-2.5 text-white" />
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* ==================== */}
+            {/* SEÇÃO: Matérias */}
+            {/* ==================== */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-blue-500" />
+                    Matérias
+                  </h3>
+                  {(configuracao.materiasSelecionadas || []).length > 0 && (
+                    <button
+                      onClick={() => setConfiguracao({...configuracao, materiasSelecionadas: []})}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Limpar ({(configuracao.materiasSelecionadas || []).length})
+                    </button>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
-                  {temDados && (
-                    <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-2 text-center">
-                      <div className="text-2xl sm:text-3xl font-bold">{estatisticas!.percentualAcertos}%</div>
-                      <div className="text-[10px] sm:text-xs opacity-80">acertos</div>
-                    </div>
-                  )}
-                  <button onClick={() => carregarDados()} className="p-2 hover:bg-white/20 rounded-lg transition-colors" title="Atualizar">
-                    <RefreshCw className="h-4 w-4 sm:h-5 sm:w-5" />
+              </div>
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
+                {/* Chip "Todas" */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => setConfiguracao({...configuracao, materiasSelecionadas: []})}
+                    className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-[0.97] min-h-[40px] flex items-center gap-1.5 ${
+                      (configuracao.materiasSelecionadas || []).length === 0
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    📚 Todas
+                    <span className="opacity-70">({totalQuestoesDisp})</span>
+                  </button>
+                </div>
+
+                {/* Busca de matérias */}
+                {materias.length > 5 && (
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar matéria..."
+                      value={buscaMateria}
+                      onChange={(e) => setBuscaMateria(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 min-h-[44px]"
+                    />
+                    {buscaMateria && (
+                      <button
+                        onClick={() => setBuscaMateria('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Lista de matérias como chips */}
+                <div className="flex flex-wrap gap-2 max-h-48 lg:max-h-72 overflow-y-auto">
+                  {materias
+                    .filter(m => !buscaMateria || m.nome.toLowerCase().includes(buscaMateria.toLowerCase()))
+                    .map((materia) => {
+                      const selecionada = (configuracao.materiasSelecionadas || []).includes(materia.id)
+                      return (
+                        <button
+                          key={materia.id}
+                          onClick={() => toggleMateria(materia.id)}
+                          className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-[0.97] min-h-[40px] flex items-center gap-1.5 ${
+                            selecionada
+                              ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                              : 'bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                          }`}
+                        >
+                          {selecionada && <Check className="h-3 w-3" />}
+                          <span className="truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px]">{materia.nome}</span>
+                          <span className="opacity-50 text-[10px]">{materia.questoes_count}</span>
+                        </button>
+                      )
+                    })
+                  }
+                </div>
+
+                {/* Matérias selecionadas (resumo) */}
+                {materiasSelecionadasNomes.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Selecionadas: {materiasSelecionadasNomes.join(', ')}
+                    </p>
+                    {materiasSelecionadasNomes.length === 1 && (
+                      <p className="text-xs text-violet-500 dark:text-violet-400 mt-1">
+                        💡 Com 1 matéria selecionada, você pode filtrar por assuntos abaixo
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Seleção de Assuntos — aparece quando UMA matéria está selecionada */}
+            {configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length === 1 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 lg:p-6">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-violet-500" />
+                  Assuntos de {materias.find(m => m.id === configuracao.materiasSelecionadas![0])?.nome || 'Matéria'}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Filtre por assuntos específicos dentro da matéria selecionada
+                </p>
+                <SeletorAssuntos
+                  materiaId={configuracao.materiasSelecionadas[0]}
+                  assuntosSelecionados={configuracao.assuntoIds}
+                  onChange={(assuntos) => setConfiguracao({...configuracao, assuntoIds: assuntos})}
+                />
+              </div>
+            )}
+
+              </div>{/* FIM COLUNA ESQUERDA */}
+              
+              {/* COLUNA DIREITA */}
+              <div className="space-y-4 sm:space-y-5">
+
+            {/* ==================== */}
+            {/* SEÇÃO: Quantidade */}
+            {/* ==================== */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Hash className="h-4 w-4 text-emerald-500" />
+                  Quantidade de Questões
+                </h3>
+              </div>
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
+                <div className="grid grid-cols-5 gap-2">
+                  {[5, 10, 20, 50].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => setConfiguracao({...configuracao, numeroQuestoes: num})}
+                      className={`py-3 rounded-xl text-sm sm:text-base font-semibold transition-all active:scale-[0.97] min-h-[48px] ${
+                        configuracao.numeroQuestoes === num
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setConfiguracao({...configuracao, numeroQuestoes: 'todas'})}
+                    className={`py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-[0.97] min-h-[48px] ${
+                      configuracao.numeroQuestoes === 'todas'
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Todas
+                  </button>
+                </div>
+                {/* Input customizado */}
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Outro:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={typeof configuracao.numeroQuestoes === 'number' && ![5,10,20,50].includes(configuracao.numeroQuestoes) ? configuracao.numeroQuestoes : ''}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value)
+                      if (value > 0) {
+                        setConfiguracao({...configuracao, numeroQuestoes: value})
+                      }
+                    }}
+                    placeholder="Nº"
+                    className="w-20 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 min-h-[40px]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ==================== */}
+            {/* SEÇÃO: Ordem */}
+            {/* ==================== */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Shuffle className="h-4 w-4 text-violet-500" />
+                  Ordem das Questões
+                </h3>
+              </div>
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <button
+                    onClick={() => setConfiguracao({...configuracao, embaralhar: false})}
+                    className={`p-3 sm:p-4 rounded-xl border-2 transition-all active:scale-[0.97] text-center min-h-[64px] flex flex-col items-center justify-center gap-1 ${
+                      !configuracao.embaralhar
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-gray-300'
+                    }`}
+                  >
+                    <ListOrdered className={`h-5 w-5 ${!configuracao.embaralhar ? 'text-blue-600' : 'text-gray-400'}`} />
+                    <span className={`text-xs sm:text-sm font-medium ${!configuracao.embaralhar ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400'}`}>
+                      Sequencial
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setConfiguracao({...configuracao, embaralhar: true})}
+                    className={`p-3 sm:p-4 rounded-xl border-2 transition-all active:scale-[0.97] text-center min-h-[64px] flex flex-col items-center justify-center gap-1 ${
+                      configuracao.embaralhar
+                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                        : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-gray-300'
+                    }`}
+                  >
+                    <Shuffle className={`h-5 w-5 ${configuracao.embaralhar ? 'text-violet-600' : 'text-gray-400'}`} />
+                    <span className={`text-xs sm:text-sm font-medium ${configuracao.embaralhar ? 'text-violet-700 dark:text-violet-300' : 'text-gray-600 dark:text-gray-400'}`}>
+                      Aleatório
+                    </span>
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Admin badges */}
-              {isAdmin && (
-                <div className="flex flex-wrap gap-2 mt-4 text-xs">
-                  <span className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{activeUsers?.totalActive || 0} online</span>
-                  <span className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 flex items-center gap-1.5"><Smartphone className="h-3.5 w-3.5" />{activeUsers?.totalDevices || 0} dispositivos</span>
-                  <span className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5" />{totalQuestoes} questões</span>
-                  <span className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" />Sistema ativo</span>
+            {/* ==================== */}
+            {/* SEÇÃO: Filtros Inteligentes */}
+            {/* ==================== */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-4 sm:pb-5">
+                <FiltrosInteligentes
+                  filtros={{
+                    apenasNaoRespondidas: configuracao.apenasNaoRespondidas || false,
+                    apenasErradas: configuracao.apenasErradas || false,
+                    revisaoQuestoesDificeis: configuracao.revisaoQuestoesDificeis || false
+                  }}
+                  onChange={(novosFiltros) => setConfiguracao({...configuracao, ...novosFiltros})}
+                  estatisticas={estatisticasFiltros}
+                />
+              </div>
+            </div>
+
+            {/* ==================== */}
+            {/* SEÇÃO: Configurações Avançadas (Colapsável) */}
+            {/* ==================== */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <button
+                onClick={() => setSecaoAvancadaAberta(!secaoAvancadaAberta)}
+                className="w-full px-4 sm:px-5 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors min-h-[52px]"
+              >
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Configurações Avançadas</span>
+                </div>
+                {secaoAvancadaAberta ? (
+                  <ChevronUp className="h-4 w-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                )}
+              </button>
+              
+              {secaoAvancadaAberta && (
+                <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                  {/* Nome da sessão */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      Nome da Sessão
+                    </label>
+                    <input
+                      type="text"
+                      value={configuracao.nomeSessao || ''}
+                      onChange={(e) => setConfiguracao({...configuracao, nomeSessao: e.target.value})}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 min-h-[44px]"
+                      placeholder={
+                        configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0
+                          ? `Estudo - ${configuracao.materiasSelecionadas.length} matérias`
+                          : "Ex: Revisão Direito Civil"
+                      }
+                    />
+                  </div>
+
+                  {/* Cor da sessão */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      Cor de Identificação
+                    </label>
+                    <div className="flex gap-2">
+                      {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'].map((cor) => (
+                        <button
+                          key={cor}
+                          onClick={() => setConfiguracao({...configuracao, corSessao: cor})}
+                          className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all min-w-[32px] ${
+                            configuracao.corSessao === cor 
+                              ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-800 scale-110' 
+                              : 'hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: cor }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Opções de Admin */}
+                  {isAdmin && (
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                      <label className="flex items-center gap-3 p-3 bg-violet-50 dark:bg-violet-900/20 rounded-xl cursor-pointer min-h-[48px]">
+                        <input
+                          type="checkbox"
+                          checked={!configuracao.salvarHistorico}
+                          onChange={(e) => setConfiguracao({...configuracao, salvarHistorico: !e.target.checked})}
+                          className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                        />
+                        <div>
+                          <span className="text-sm font-medium text-violet-800 dark:text-violet-300">
+                            Modo teste
+                          </span>
+                          <span className="text-xs text-violet-600 dark:text-violet-400 block">
+                            Não salvar no histórico
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full" />
-            <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full" />
-          </div>
 
-          {/* ============================== */}
-          {/* AÇÕES ADMIN */}
-          {/* ============================== */}
-          {isAdmin && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-              {[
-                { href: '/questoes', icon: Plus, label: 'Questões', cor: 'blue' },
-                { href: '/materias', icon: BookOpen, label: 'Matérias', cor: 'emerald' },
-                { href: '/relatorios', icon: BarChart3, label: 'Relatórios', cor: 'violet' },
-                { href: '/estudar', icon: Play, label: 'Estudar', cor: 'amber' },
-              ].map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link key={item.href} href={item.href}
-                    className="flex flex-col items-center gap-2 p-4 sm:p-5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md active:scale-[0.98] transition-all min-h-[80px] justify-center"
-                  >
-                    <Icon className={`h-5 w-5 sm:h-6 sm:w-6 text-${item.cor}-500`} />
-                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">{item.label}</span>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
+              </div>{/* FIM COLUNA DIREITA */}
+            </div>{/* FIM GRID RESPONSIVO */}
 
-          {/* ============================== */}
-          {/* ONBOARDING (sem dados) */}
-          {/* ============================== */}
-          {!temDados && (
-            <div className="space-y-4">
-              <div className="text-center py-8">
-                <div className="text-5xl mb-4">{isAdmin ? '👨‍💼' : '🎓'}</div>
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                  {isAdmin ? 'Bem-vindo ao Painel!' : 'Bem-vindo ao Sistema de Estudos!'}
-                </h2>
-                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-                  {isAdmin 
-                    ? 'Configure matérias e adicione questões para seus alunos.' 
-                    : 'Prepare-se para o CFP da PMDF com questões e acompanhamento.'}
-                </p>
+            {/* ==================== */}
+            {/* Resumo da Sessão */}
+            {/* ==================== */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 lg:p-6">
+              <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                Resumo da Sessão
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                  {getModoEstudoInfo(configuracao.modoEstudo).icon} {getModoEstudoInfo(configuracao.modoEstudo).nome}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                  📚 {(configuracao.materiasSelecionadas || []).length > 0 ? `${(configuracao.materiasSelecionadas || []).length} matéria(s)` : 'Todas'}
+                </span>
+                {configuracao.assuntoIds.length > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-violet-50 dark:bg-violet-900/20 rounded-lg text-xs font-medium text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700">
+                    📑 {configuracao.assuntoIds.length} assunto(s)
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                  🔢 {configuracao.numeroQuestoes === 'todas' ? 'Todas' : configuracao.numeroQuestoes} questões
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                  {configuracao.embaralhar ? '🎲 Aleatório' : '📋 Sequencial'}
+                </span>
+                {configuracao.nomeSessao?.trim() && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                    🏷️ {configuracao.nomeSessao.trim()}
+                  </span>
+                )}
+                {isAdmin && !configuracao.salvarHistorico && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                    🧪 Modo teste
+                  </span>
+                )}
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {isAdmin ? (
+            {/* Gerenciar sessões (link, não botão grande) */}
+            <button
+              onClick={() => setShowGerenciadorSessoesModal(true)}
+              className="w-full flex items-center justify-between px-4 py-3.5 lg:px-5 lg:py-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors min-h-[52px] group"
+            >
+              <div className="flex items-center gap-2.5">
+                <Layers className="h-4 w-4 text-violet-500" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {isAdmin ? 'Gerenciar Testes' : 'Gerenciar Sessões'}
+                </span>
+              </div>
+              <ArrowRight className="h-4 w-4 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* ==================== */}
+            {/* Botão INICIAR (Desktop) */}
+            {/* ==================== */}
+            <div className="hidden sm:block">
+              <button
+                onClick={iniciarSessao}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2.5 px-6 py-4 lg:py-5 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base lg:text-lg font-semibold shadow-lg shadow-emerald-600/20"
+              >
+                {loading ? (
                   <>
-                    <Link href="/materias" className="flex items-center gap-4 p-5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
-                      <div className="text-3xl">📚</div>
-                      <div><h3 className="font-semibold text-gray-900 dark:text-white">Criar Matérias</h3><p className="text-xs text-gray-500 dark:text-gray-400">Organize por disciplinas</p></div>
-                    </Link>
-                    <Link href="/questoes" className="flex items-center gap-4 p-5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
-                      <div className="text-3xl">❓</div>
-                      <div><h3 className="font-semibold text-gray-900 dark:text-white">Adicionar Questões</h3><p className="text-xs text-gray-500 dark:text-gray-400">Individual ou em lote</p></div>
-                    </Link>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                    Carregando questões...
                   </>
                 ) : (
                   <>
-                    <Link href="/estudar" className="flex items-center gap-4 p-5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
-                      <div className="text-3xl">🎯</div>
-                      <div><h3 className="font-semibold text-gray-900 dark:text-white">Começar a Estudar</h3><p className="text-xs text-gray-500 dark:text-gray-400">Inicie sua primeira sessão</p></div>
-                    </Link>
-                    <Link href="/materias" className="flex items-center gap-4 p-5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
-                      <div className="text-3xl">📚</div>
-                      <div><h3 className="font-semibold text-gray-900 dark:text-white">Ver Matérias</h3><p className="text-xs text-gray-500 dark:text-gray-400">{materias.length} disciplinas disponíveis</p></div>
-                    </Link>
+                    <Play className="h-5 w-5" />
+                    {isAdmin ? 'Iniciar Teste' : 'Iniciar Sessão'}
                   </>
                 )}
-              </div>
-
-              {materias.length > 0 && !isAdmin && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Matérias Disponíveis</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {materias.map(m => (
-                      <Link key={m.id} href={`/estudar?materia=${m.id}`}
-                        className="px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
-                        {m.nome} <span className="opacity-50">({m.questoes_count})</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
+              </button>
             </div>
-          )}
 
-          {/* ============================== */}
-          {/* DASHBOARD COM DADOS */}
-          {/* ============================== */}
-          {temDados && (
-            <>
-              {/* Alertas */}
-              {alertas.length > 0 && (
-                <div className="space-y-2">
-                  {alertas.map(a => (
-                    <div key={a.id} className={`flex items-start gap-3 p-3 sm:p-4 rounded-xl border ${getCorAlerta(a.tipo)}`}>
-                      <span className="text-xl mt-0.5">{a.icone}</span>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{a.titulo}</h4>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{a.mensagem}</p>
-                      </div>
-                      {a.acao && (
-                        <Link href={a.acao.link} className="shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 active:scale-[0.97] transition-all flex items-center gap-1 min-h-[32px]">
-                          {a.acao.texto}<ArrowRight className="h-3 w-3" />
-                        </Link>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Dicas (simplificadas) */}
+            <div className={`rounded-xl p-4 lg:p-5 text-xs sm:text-sm ${
+              isAdmin 
+                ? 'bg-violet-50 dark:bg-violet-900/10 text-violet-700 dark:text-violet-400'
+                : 'bg-blue-50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400'
+            }`}>
+              <p className="font-medium mb-1.5">💡 {isAdmin ? 'Dica de Teste' : 'Dica de Estudo'}</p>
+              <p>
+                {isAdmin 
+                  ? 'Use o modo teste para verificar questões sem afetar estatísticas. Teste diferentes filtros para validar o conteúdo.'
+                  : 'Comece com sessões curtas de 10 questões. Use o modo revisão para focar nas que errou. Estude regularmente para melhores resultados.'
+                }
+              </p>
+            </div>
 
-              {/* Stats rápidas */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 lg:p-5">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shrink-0">
-                      <Target className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{estatisticas!.totalRespostas}</div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Respondidas</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 lg:p-5">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
-                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{estatisticas!.acertos}</div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{estatisticas!.percentualAcertos}% acertos</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 lg:p-5">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${estatisticas!.sequenciaAtual >= 5 ? 'bg-orange-100 dark:bg-orange-900/30' : 'bg-gray-100 dark:bg-gray-700'}`}>
-                      <Flame className={`h-4 w-4 sm:h-5 sm:w-5 ${estatisticas!.sequenciaAtual >= 5 ? 'text-orange-600' : 'text-gray-400'}`} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{estatisticas!.sequenciaAtual}</div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Sequência</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 lg:p-5">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg shrink-0">
-                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-violet-600" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{fmtTempo(estatisticas!.tempoMedioResposta)}</div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Tempo médio</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* CTA Rápido */}
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                <Link href="/estudar" className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all font-medium text-sm sm:text-base min-h-[48px]">
-                  <Play className="h-4 w-4" /> Estudar Agora
-                </Link>
-                {materiasComProblemas.length > 0 && (
-                  <Link href={`/estudar?materia=${materiasComProblemas[0].id}`} className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 active:scale-[0.98] transition-all font-medium text-sm sm:text-base min-h-[48px]">
-                    <RotateCcw className="h-4 w-4" /> Revisar Erros
-                  </Link>
-                )}
-              </div>
-
-              {/* ============================== */}
-              {/* ABAS */}
-              {/* ============================== */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                {/* Tab bar com scroll horizontal no mobile */}
-                <div className="border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide">
-                  <nav className="flex min-w-max px-2 sm:px-4">
-                    {([
-                      { id: 'visao-geral' as const, nome: 'Geral', icon: BarChart3 },
-                      { id: 'performance' as const, nome: 'Performance', icon: Target },
-                      { id: 'metas' as const, nome: 'Metas', icon: Calendar },
-                      { id: 'conquistas' as const, nome: 'Conquistas', icon: Trophy },
-                    ]).map(aba => {
-                      const Icon = aba.icon
-                      return (
-                        <button key={aba.id} onClick={() => setAbaAtiva(aba.id)}
-                          className={`flex items-center gap-1.5 py-3 px-3 sm:px-4 border-b-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap min-h-[44px] ${
-                            abaAtiva === aba.id
-                              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                          }`}>
-                          <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />{aba.nome}
-                        </button>
-                      )
-                    })}
-                  </nav>
-                </div>
-
-                <div className="p-4 sm:p-5 lg:p-6">
-
-                  {/* ======= VISÃO GERAL ======= */}
-                  {abaAtiva === 'visao-geral' && (
-                    <div className="space-y-5">
-                      {/* Atividade Hoje */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-                          <div className="text-xl sm:text-2xl font-bold text-blue-600">{estatisticas!.questoesHoje}</div>
-                          <div className="text-[10px] sm:text-xs text-blue-600/70">Questões hoje</div>
-                        </div>
-                        <div className="text-center p-3 bg-violet-50 dark:bg-violet-900/20 rounded-xl">
-                          <div className="text-xl sm:text-2xl font-bold text-violet-600">{fmtTempo(estatisticas!.tempoEstudoHoje)}</div>
-                          <div className="text-[10px] sm:text-xs text-violet-600/70">Estudo hoje</div>
-                        </div>
-                        <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
-                          <div className="text-xl sm:text-2xl font-bold text-orange-600">{estatisticas!.diasConsecutivos}</div>
-                          <div className="text-[10px] sm:text-xs text-orange-600/70">Dias seguidos</div>
-                        </div>
-                        <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-                          <div className="text-xl sm:text-2xl font-bold text-emerald-600">{estatisticas!.melhorSequencia}</div>
-                          <div className="text-[10px] sm:text-xs text-emerald-600/70">Melhor seq.</div>
-                        </div>
-                      </div>
-
-                      {/* Atividade Recente (dados REAIS do Supabase!) */}
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                          <Activity className="h-4 w-4 text-gray-400" /> Atividade Recente
-                        </h3>
-                        {atividadeRecente.length > 0 ? (
-                          <div className="space-y-2">
-                            {atividadeRecente.map(a => (
-                              <div key={a.id} className="flex items-center gap-3 p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-                                <div className={`w-2 h-2 rounded-full shrink-0 ${a.resultado === 'acerto' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{a.descricao}</p>
-                                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{fmtDataRelativa(a.timestamp)}</p>
-                                </div>
-                                <span className="shrink-0 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-[10px] sm:text-xs truncate max-w-[80px] sm:max-w-[120px]">
-                                  {a.materia}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-6">
-                            <Activity className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                            <p className="text-xs text-gray-500">Nenhuma atividade ainda. Comece a estudar!</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ======= PERFORMANCE ======= */}
-                  {abaAtiva === 'performance' && (
-                    <div className="space-y-5">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Performance por Matéria</h3>
-                      {materias.length > 0 ? (
-                        <div className="space-y-3">
-                          {materias.map(m => (
-                            <div key={m.id} className="flex items-center gap-3">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white truncate">{m.nome}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                    <div className={`h-2 rounded-full transition-all ${
-                                      (m.percentual_acertos || 0) >= 80 ? 'bg-emerald-500' :
-                                      (m.percentual_acertos || 0) >= 60 ? 'bg-amber-500' : 'bg-red-500'
-                                    }`} style={{ width: `${Math.max(m.percentual_acertos || 0, 3)}%` }} />
-                                  </div>
-                                  <span className="text-xs text-gray-500 w-10 text-right shrink-0">
-                                    {(m.total_respostas || 0) > 0 ? `${m.percentual_acertos || 0}%` : '—'}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-gray-400 mt-0.5">{m.total_respostas || 0} respondidas</p>
-                              </div>
-                              <Link href={`/estudar?materia=${m.id}`}
-                                className="shrink-0 px-2.5 py-1 text-[10px] sm:text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full hover:bg-blue-200 transition-colors min-h-[28px] flex items-center">
-                                Estudar
-                              </Link>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500 text-center py-6">Nenhuma matéria encontrada.</p>
-                      )}
-
-                      {/* Estatísticas resumidas */}
-                      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between"><span className="text-gray-500">Total</span><span className="font-medium text-gray-900 dark:text-white">{estatisticas!.totalRespostas}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-500">Acertos</span><span className="font-medium text-emerald-600">{estatisticas!.acertos}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-500">Taxa</span><span className="font-medium text-blue-600">{estatisticas!.percentualAcertos}%</span></div>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between"><span className="text-gray-500">Melhor seq.</span><span className="font-medium text-orange-600">{estatisticas!.melhorSequencia}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-500">Tempo médio</span><span className="font-medium text-violet-600">{fmtTempo(estatisticas!.tempoMedioResposta)}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-500">Dias seguidos</span><span className="font-medium text-orange-600">{estatisticas!.diasConsecutivos}</span></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ======= METAS ======= */}
-                  {abaAtiva === 'metas' && (
-                    <div className="space-y-5">
-                      {/* Meta Diária */}
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Calendar className="h-4 w-4" /> Meta Diária
-                          </h3>
-                          {metaEstudo?.metaDiariaAlcancada && (
-                            <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full text-xs flex items-center gap-1">
-                              <CheckCircle className="h-3 w-3" /> Alcançada!
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex justify-between text-xs mb-1.5">
-                          <span className="text-gray-500">{estatisticas!.questoesHoje} / {metaEstudo?.questoesDiarias || 20}</span>
-                          <span className="font-medium text-blue-600">{Math.round(metaEstudo?.progressoDiario || 0)}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                          <div className="bg-blue-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(metaEstudo?.progressoDiario || 0, 100)}%` }} />
-                        </div>
-                      </div>
-
-                      {/* Dias consecutivos */}
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                          <Flame className="h-4 w-4 text-orange-500" /> Sequência de Estudos
-                        </h3>
-                        <div className="text-center">
-                          <div className="text-3xl sm:text-4xl font-bold text-orange-600 mb-1">{estatisticas!.diasConsecutivos}</div>
-                          <div className="text-sm text-gray-500 mb-3">{estatisticas!.diasConsecutivos === 1 ? 'dia consecutivo' : 'dias consecutivos'}</div>
-                          <div className="flex justify-center gap-1.5">
-                            {Array.from({ length: 7 }, (_, i) => (
-                              <div key={i} className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                                i < estatisticas!.diasConsecutivos ? 'bg-orange-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                              }`}>{i + 1}</div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Configurar */}
-                      <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-3">Configurar Meta</h4>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-gray-600 dark:text-gray-400 shrink-0">Questões/dia:</span>
-                          <input type="number" min="1" max="100"
-                            value={metaEstudo?.questoesDiarias || 20}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value) || 20
-                              const novasMetas = { ...metaEstudo, questoesDiarias: v }
-                              setMetaEstudo(novasMetas as MetaEstudo)
-                              localStorage.setItem('meta_estudo', JSON.stringify(novasMetas))
-                            }}
-                            className="w-20 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm min-h-[40px]"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ======= CONQUISTAS ======= */}
-                  {abaAtiva === 'conquistas' && (
-                    <div className="space-y-4">
-                      {/* Resumo */}
-                      <div className="grid grid-cols-3 gap-3 mb-2">
-                        <div className="text-center p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                          <div className="text-xl font-bold text-amber-600">{conquistas.filter(c => c.desbloqueada).length}</div>
-                          <div className="text-[10px] sm:text-xs text-amber-600/70">Desbloqueadas</div>
-                        </div>
-                        <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-                          <div className="text-xl font-bold text-blue-600">{conquistas.filter(c => !c.desbloqueada && c.progresso > 0).length}</div>
-                          <div className="text-[10px] sm:text-xs text-blue-600/70">Em progresso</div>
-                        </div>
-                        <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                          <div className="text-xl font-bold text-gray-600 dark:text-gray-300">{conquistas.length}</div>
-                          <div className="text-[10px] sm:text-xs text-gray-500">Total</div>
-                        </div>
-                      </div>
-
-                      {/* Lista */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {conquistas.map(c => (
-                          <div key={c.id} className={`flex items-start gap-3 p-3 sm:p-4 rounded-xl border transition-all ${
-                            c.desbloqueada
-                              ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800'
-                              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-                          }`}>
-                            <div className={`text-2xl sm:text-3xl ${c.desbloqueada ? '' : 'grayscale opacity-50'}`}>{c.icone}</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">{c.nome}</h4>
-                                {c.desbloqueada && <Crown className="h-3 w-3 text-amber-500 shrink-0" />}
-                              </div>
-                              <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{c.descricao}</p>
-                              <div className="mt-2">
-                                <div className="flex justify-between text-[10px] mb-0.5">
-                                  <span className="text-gray-500">{c.progresso}/{c.meta}</span>
-                                  <span className={c.desbloqueada ? 'text-amber-600' : 'text-blue-600'}>{Math.round((c.progresso / c.meta) * 100)}%</span>
-                                </div>
-                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                                  <div className={`h-1.5 rounded-full transition-all ${c.desbloqueada ? 'bg-amber-500' : 'bg-blue-500'}`}
-                                    style={{ width: `${Math.min((c.progresso / c.meta) * 100, 100)}%` }} />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Matérias Overview (admin) */}
-              {isAdmin && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                    <BookOpen className="h-4 w-4" /> Matérias
-                  </h3>
-                  <div className="space-y-2 max-h-48 sm:max-h-64 overflow-y-auto">
-                    {materias.map(m => (
-                      <div key={m.id} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${(m.questoes_count || 0) > 0 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                          <div className="min-w-0">
-                            <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white truncate">{m.nome}</p>
-                            <p className="text-[10px] text-gray-500">{m.questoes_count || 0} questões</p>
-                          </div>
-                        </div>
-                        <Link href={`/questoes?materia=${m.id}`} className="text-[10px] sm:text-xs text-blue-600 hover:underline flex items-center gap-0.5 shrink-0">
-                          Gerenciar<ChevronRight className="h-3 w-3" />
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Configurações */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
-                      <Settings className="h-3.5 w-3.5" /> Configurações
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Gerencie seus dados de estudo</p>
-                  </div>
-                  <button onClick={() => setMostrarModalZerar(true)}
-                    className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 active:scale-[0.98] transition-all text-xs sm:text-sm font-medium min-h-[40px]">
-                    <Trash2 className="h-3.5 w-3.5" /> Zerar Estatísticas
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          </div>
         </div>
 
-        {/* Modal Zerar */}
-        {mostrarModalZerar && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-sm w-full p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                <Trash2 className="h-5 w-5 text-red-600" /> Zerar Estatísticas
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Isso vai deletar permanentemente todo seu histórico de respostas, tempos e progresso. Esta ação não pode ser desfeita.
-              </p>
-              <div className="flex gap-2">
-                <button onClick={() => setMostrarModalZerar(false)} disabled={zerandoEstatisticas}
-                  className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-h-[44px]">
-                  Cancelar
-                </button>
-                <button onClick={zerarTodasEstatisticas} disabled={zerandoEstatisticas}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2 min-h-[44px]">
-                  {zerandoEstatisticas ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Trash2 className="h-4 w-4" />}
-                  {zerandoEstatisticas ? 'Zerando...' : 'Confirmar'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ==================== */}
+        {/* Botão INICIAR Sticky (Mobile) */}
+        {/* ==================== */}
+        <div className="sm:hidden fixed bottom-0 inset-x-0 p-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-700 z-40">
+          <button
+            onClick={iniciarSessao}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base font-semibold shadow-lg shadow-emerald-600/20"
+          >
+            {loading ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                Carregando...
+              </>
+            ) : (
+              <>
+                <Play className="h-5 w-5" />
+                {isAdmin ? 'Iniciar Teste' : 'Iniciar Sessão'}
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Modal Gerenciador de Sessões */}
+        <GerenciadorSessoes
+          isOpen={showGerenciadorSessoesModal}
+          onClose={() => setShowGerenciadorSessoesModal(false)}
+          onContinuarSessao={(sessao) => {
+            console.log('Continuar sessão:', sessao)
+            continuarSessao(sessao)
+          }}
+          onNovaSessao={() => {
+            setShowGerenciadorSessoesModal(false)
+          }}
+        />
       </DashboardLayout>
     </ProtectedRoute>
   )

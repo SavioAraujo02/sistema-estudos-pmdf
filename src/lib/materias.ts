@@ -34,6 +34,8 @@ export async function getMateriasComEstatisticas() {
   try {
     console.time('⏱️ getMateriasComEstatisticas')
     
+    const { data: { user } } = await supabase.auth.getUser()
+
     // 1. Buscar matérias básicas
     const { data: materias, error: materiasError } = await supabase
       .from('materias')
@@ -45,57 +47,52 @@ export async function getMateriasComEstatisticas() {
       return []
     }
 
-    // 2. Buscar TODAS as questões usando count
-    const { count: totalQuestoes } = await supabase
+    // 2. Buscar contagem de questões por matéria
+    const { data: todasQuestoes } = await supabase
       .from('questoes')
-      .select('*', { count: 'exact', head: true })
+      .select('id, materia_id, tipo')
 
-    const { count: questoesCertoErrado } = await supabase
-      .from('questoes')
-      .select('*', { count: 'exact', head: true })
-      .eq('tipo', 'certo_errado')
+    // 3. Buscar histórico de respostas do usuário (SE logado)
+    let historico: any[] = []
+    if (user) {
+      const { data: historicoData } = await supabase
+        .from('historico_estudos')
+        .select(`
+          acertou,
+          questoes!inner(materia_id)
+        `)
+        .eq('usuario_id', user.id)
 
-    const { count: questoesMultipla } = await supabase
-      .from('questoes')
-      .select('*', { count: 'exact', head: true })
-      .eq('tipo', 'multipla_escolha')
+      historico = historicoData || []
+    }
 
-    console.log('📊 CONTAGENS REAIS:')
-    console.log('- Total questões:', totalQuestoes)
-    console.log('- Certo/Errado:', questoesCertoErrado)
-    console.log('- Múltipla Escolha:', questoesMultipla)
+    // 4. Montar estatísticas por matéria
+    const materiasComStats = (materias || []).map((materia) => {
+      // Contagens de questões
+      const questoesMateria = (todasQuestoes || []).filter(q => q.materia_id === materia.id)
+      const questoesCount = questoesMateria.length
+      const certoErrado = questoesMateria.filter(q => q.tipo === 'certo_errado').length
+      const multipla = questoesMateria.filter(q => q.tipo === 'multipla_escolha').length
 
-    // 3. Para cada matéria, contar suas questões
-    const materiasComStats = await Promise.all(
-      (materias || []).map(async (materia) => {
-        // Contar questões desta matéria
-        const { count: questoesMateria } = await supabase
-          .from('questoes')
-          .select('*', { count: 'exact', head: true })
-          .eq('materia_id', materia.id)
+      // Respostas do usuário nesta matéria
+      const respostasMateria = historico.filter(
+        (h: any) => h.questoes?.materia_id === materia.id
+      )
+      const totalRespostas = respostasMateria.length
+      const acertos = respostasMateria.filter((h: any) => h.acertou).length
+      const percentualAcertos = totalRespostas > 0 
+        ? Math.round((acertos / totalRespostas) * 100) 
+        : 0
 
-        const { count: certoErradoMateria } = await supabase
-          .from('questoes')
-          .select('*', { count: 'exact', head: true })
-          .eq('materia_id', materia.id)
-          .eq('tipo', 'certo_errado')
-
-        const { count: multiplaMateria } = await supabase
-          .from('questoes')
-          .select('*', { count: 'exact', head: true })
-          .eq('materia_id', materia.id)
-          .eq('tipo', 'multipla_escolha')
-
-        return {
-          ...materia,
-          questoes_count: questoesMateria || 0,
-          questoes_certo_errado: certoErradoMateria || 0,
-          questoes_multipla_escolha: multiplaMateria || 0,
-          percentual_acertos: 0,
-          total_respostas: 0
-        }
-      })
-    )
+      return {
+        ...materia,
+        questoes_count: questoesCount,
+        questoes_certo_errado: certoErrado,
+        questoes_multipla_escolha: multipla,
+        total_respostas: totalRespostas,
+        percentual_acertos: percentualAcertos
+      }
+    })
 
     console.timeEnd('⏱️ getMateriasComEstatisticas')
     return materiasComStats

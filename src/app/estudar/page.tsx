@@ -1428,26 +1428,40 @@ export default function EstudarPage() {
         </div>
 
         {/* ==================== */}
-        {/* Botão INICIAR Sticky (Mobile) */}
+        {/* Botões INICIAR + PDF Sticky (Mobile) */}
         {/* ==================== */}
         <div className="sm:hidden fixed bottom-0 inset-x-0 p-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-700 z-40">
-          <button
-            onClick={iniciarSessao}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base font-semibold shadow-lg shadow-emerald-600/20"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
-                Carregando...
-              </>
-            ) : (
-              <>
-                <Play className="h-5 w-5" />
-                {isAdmin ? 'Iniciar Teste' : 'Iniciar Sessão'}
-              </>
-            )}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={iniciarSessao}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2.5 px-6 py-3.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base font-semibold shadow-lg shadow-emerald-600/20"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                  Carregando...
+                </>
+              ) : (
+                <>
+                  <Play className="h-5 w-5" />
+                  {isAdmin ? 'Iniciar Teste' : 'Iniciar'}
+                </>
+              )}
+            </button>
+            <button
+              onClick={gerarPdf}
+              disabled={gerandoPdf || loading}
+              className="flex items-center justify-center gap-1.5 px-4 py-3.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50 text-sm font-semibold"
+            >
+              {gerandoPdf ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              PDF
+            </button>
+          </div>
         </div>
 
         {/* Modal Gerenciador de Sessões */}

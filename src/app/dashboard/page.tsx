@@ -7,6 +7,7 @@ import { useAuth } from '@/components/AuthProvider'
 import { getEstatisticasEstudo, zerarEstatisticasUsuario, getAtividadeRecente, EstatisticasCompletas, AtividadeRecenteDB } from '@/lib/estudo'
 import { getRanking, ordenarRanking, UsuarioRanking } from '@/lib/ranking'
 import { getMateriasComEstatisticas } from '@/lib/materias'
+import { QuestaoDoDia } from '@/components/QuestaoDoDia'
 import { 
   Clock, Target, BookOpen, Zap, Users, Settings, 
   Plus, BarChart3, AlertCircle, CheckCircle, Trash2, RefreshCw, Calendar,
@@ -330,6 +331,8 @@ export default function DashboardPage() {
           {/* ============================== */}
           {!temDados && (
             <div className="space-y-4">
+               {/* Questão do Dia (mesmo sem dados) */}
+               <QuestaoDoDia />
               <div className="text-center py-8">
                 <div className="text-5xl mb-4">{isAdmin ? '👨‍💼' : '🎓'}</div>
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
@@ -398,6 +401,8 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+              {/* Questão do Dia */}
+              <QuestaoDoDia />
               {/* Alertas */}
               {alertas.length > 0 && (
                 <div className="space-y-2">

@@ -52,6 +52,8 @@ import { getUsuariosDetalhados, getEstatisticasAdmin, desconectarUsuario } from 
 import { getMaterias } from '@/lib/materias'
 import { supabase } from '@/lib/supabase'
 import { VisualizarQuestao } from '@/components/VisualizarQuestao'
+import { AdminRelatorios } from '@/components/admin/AdminRelatorios'
+import { AdminConfiguracoes } from '@/components/admin/AdminConfiguracoes'
 
 interface Report {
   id: string
@@ -466,7 +468,7 @@ export default function AdminPage() {
           {/* Navegação por abas */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
             <div className="border-b border-gray-200 dark:border-gray-700">
-              <nav className="flex space-x-8 px-6 overflow-x-auto">
+            <nav className="flex gap-1 sm:gap-2 px-3 sm:px-4 overflow-x-auto scrollbar-hide">
                 {[
                   { id: 'dashboard', nome: 'Dashboard', icon: BarChart3 },
                   { id: 'pagamentos', nome: `Pagamentos (${estatisticasFinanceiras?.pagamentosPendentes || 0})`, icon: CreditCard },
@@ -1308,90 +1310,7 @@ export default function AdminPage() {
               )}
 
               {/* ABA RELATÓRIOS */}
-              {abaAtiva === 'relatorios' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    📊 Relatórios e Analytics
-                  </h2>
-                  
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <h3 className="font-medium text-blue-900 dark:text-blue-300 mb-3">
-                      🚧 Relatórios Avançados em Desenvolvimento
-                    </h3>
-                    <p className="text-sm text-blue-700 dark:text-blue-400 mb-4">
-                      Os seguintes relatórios serão implementados em breve:
-                    </p>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded border">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-2">📈 Performance por Matéria</h4>
-                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          <li>• Taxa de acerto por matéria</li>
-                          <li>• Questões mais difíceis</li>
-                          <li>• Tempo médio de resposta</li>
-                          <li>• Evolução do desempenho</li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded border">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-2">👥 Usuários Mais Ativos</h4>
-                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          <li>• Ranking de atividade</li>
-                          <li>• Tempo de estudo diário</li>
-                          <li>• Questões respondidas</li>
-                          <li>• Sequência de estudos</li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded border">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-2">❌ Questões com Mais Erros</h4>
-                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          <li>• Questões mais erradas</li>
-                          <li>• Análise de alternativas</li>
-                          <li>• Sugestões de melhoria</li>
-                          <li>• Reports relacionados</li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded border">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-2">📊 Estatísticas de Uso</h4>
-                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          <li>• Horários de pico</li>
-                          <li>• Dispositivos mais usados</li>
-                          <li>• Localização dos usuários</li>
-                          <li>• Padrões de navegação</li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded border">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-2">💰 Relatório Financeiro</h4>
-                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          <li>• Receita por período</li>
-                          <li>• Métodos de pagamento</li>
-                          <li>• Taxa de conversão</li>
-                          <li>• Previsão de receita</li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded border">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-2">🔒 Relatório de Segurança</h4>
-                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          <li>• Tentativas de login</li>
-                          <li>• IPs suspeitos</li>
-                          <li>• Múltiplas sessões</li>
-                          <li>• Atividades anômalas</li>
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-900/30 rounded">
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        💡 <strong>Próxima atualização:</strong> Implementação dos gráficos interativos e exportação em PDF/Excel
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {abaAtiva === 'relatorios' && <AdminRelatorios />}
 
               {/* ABA CONFIGURAÇÕES */}
               {abaAtiva === 'configuracoes' && (

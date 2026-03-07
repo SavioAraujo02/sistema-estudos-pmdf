@@ -389,6 +389,15 @@ export default function DashboardPage() {
           {/* ============================== */}
           {temDados && (
             <>
+            {/* Aviso Legal Fixo */}
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 sm:p-4">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-red-800 dark:text-red-300">
+                    <span className="font-bold">Conteúdo exclusivo CFP/PMDF.</span> Proibido compartilhar acesso com terceiros. Este sistema não possui vínculo oficial com a PMDF.
+                  </div>
+                </div>
+              </div>
               {/* Alertas */}
               {alertas.length > 0 && (
                 <div className="space-y-2">

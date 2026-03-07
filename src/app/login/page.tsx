@@ -1248,6 +1248,27 @@ useEffect(() => {
             </div>
           )}
         </div>
+        {/* Aviso Legal */}
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+            <div className="space-y-2 text-xs text-red-800 dark:text-red-300">
+              <p className="font-bold text-sm">⚠️ Aviso Importante</p>
+              <p className="text-justify">
+                Este sistema é de uso <strong>exclusivo</strong> para alunos do Curso de Formação de Praças (CFP) da Polícia Militar do Distrito Federal. O conteúdo aqui disponibilizado é de caráter exclusivo de formação policial.
+              </p>
+              <p className="text-justify">
+                É <strong>terminantemente proibido</strong> compartilhar login, senha ou qualquer conteúdo deste sistema com terceiros. Cidadãos comuns não podem ter acesso a este material sob nenhuma hipótese.
+              </p>
+              <p className="text-justify">
+                Este sistema <strong>não possui vínculo oficial</strong> com a PMDF. Trata-se de uma ferramenta independente de apoio aos estudos.
+              </p>
+              <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">
+                O uso indevido poderá resultar no bloqueio permanente da conta.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Informações do sistema */}
         <div className="text-center text-xs text-gray-500 dark:text-gray-400 space-y-1">

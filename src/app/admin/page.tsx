@@ -108,6 +108,8 @@ interface UsuarioDetalhado {
   lastActivity?: string
   deviceCount: number
   devices: DeviceSession[]
+  isSuspeito: boolean
+  motivoSuspeita?: string
 }
 
 interface EstatisticasFinanceiras {
@@ -125,6 +127,7 @@ interface EstatisticasDetalhadas {
   usuariosOffline: number
   totalDispositivos: number
   usuariosMultiplosDispositivos: number
+  usuariosSuspeitos: number
   dispositivosPorTipo: Record<string, number>
 }
 
@@ -228,10 +231,9 @@ export default function AdminPage() {
 
   const carregarUsuariosDetalhados = async () => {
     try {
-      const [detalhados, stats] = await Promise.all([
-        getUsuariosDetalhados(),
-        getEstatisticasAdmin()
-      ])
+      // Busca usuários UMA vez e reutiliza para estatísticas
+      const detalhados = await getUsuariosDetalhados()
+      const stats = await getEstatisticasAdmin(detalhados)
       setUsuariosDetalhados(detalhados)
       setEstatisticasDetalhadas(stats)
     } catch (error) {
@@ -908,6 +910,38 @@ export default function AdminPage() {
                             </p>
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Alertas de comportamento suspeito */}
+                  {usuariosDetalhados.filter(u => u.isSuspeito).length > 0 && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                      <h3 className="font-semibold text-red-800 dark:text-red-300 mb-3 flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5" />
+                        Comportamento Suspeito ({usuariosDetalhados.filter(u => u.isSuspeito).length})
+                      </h3>
+                      <div className="space-y-2">
+                        {usuariosDetalhados
+                          .filter(u => u.isSuspeito)
+                          .map(u => (
+                            <div key={u.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded-lg border border-red-100 dark:border-red-900">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="text-lg">⚠️</span>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-gray-900 dark:text-white text-sm truncate">{u.nome}</p>
+                                  <p className="text-xs text-red-600 dark:text-red-400">{u.motivoSuspeita}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDesconectarUsuario(u.id, u.nome)}
+                                className="shrink-0 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700 transition-colors flex items-center gap-1"
+                              >
+                                <LogOut className="h-3 w-3" />
+                                Desconectar
+                              </button>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}

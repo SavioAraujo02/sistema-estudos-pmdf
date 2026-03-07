@@ -87,35 +87,20 @@ export async function createOrUpdateSession(userId: string) {
       return
     }
 
-    console.log('🔄 Criando/atualizando sessão para:', userId)
-    
     const deviceInfo = getSimpleDeviceInfo()
     const deviceFingerprint = generateSimpleFingerprint()
-    const sessionId = generateSessionId(userId, deviceFingerprint)
     
-    console.log('📱 Device fingerprint:', deviceFingerprint)
-    console.log('🆔 Session ID:', sessionId)
+    console.log('🔄 Sessão para:', userId, '| Fingerprint:', deviceFingerprint)
     
-    // Primeiro, verificar se já existe uma sessão
-    const { data: existingSession, error: selectError } = await supabase
+    // UPSERT: insere se não existe, atualiza se já existe
+    // Depende da constraint UNIQUE em (usuario_id, device_fingerprint)
+    const { error } = await supabase
       .from('user_sessions')
-      .select('id, session_id')
-      .eq('usuario_id', userId)
-      .eq('device_fingerprint', deviceFingerprint)
-      .maybeSingle()
-    
-    if (selectError) {
-      console.error('❌ Erro ao verificar sessão:', selectError.message)
-      throw selectError
-    }
-    
-    if (existingSession) {
-      // Atualizar sessão existente (mantendo o session_id original)
-      console.log('🔄 Atualizando sessão existente...')
-      
-      const { error: updateError } = await supabase
-        .from('user_sessions')
-        .update({
+      .upsert(
+        {
+          usuario_id: userId,
+          device_fingerprint: deviceFingerprint,
+          session_id: `${userId}-${deviceFingerprint}`,
           last_activity: new Date().toISOString(),
           browser_name: deviceInfo.browser,
           os_name: deviceInfo.os,
@@ -124,65 +109,22 @@ export async function createOrUpdateSession(userId: string) {
           device_info: {
             browser: deviceInfo.browser,
             os: deviceInfo.os,
-            device: deviceInfo.isMobile ? 'Mobile' : 'Desktop'
+            device: deviceInfo.isMobile ? 'Mobile' : 'Desktop',
+            screen: typeof screen !== 'undefined' ? `${screen.width}×${screen.height}` : 'Unknown'
           }
-        })
-        .eq('id', existingSession.id)
-      
-      if (updateError) {
-        console.error('❌ Erro ao atualizar sessão:', updateError.message)
-        throw updateError
-      }
-      
-      console.log('✅ Sessão atualizada com sucesso')
-    } else {
-      // Criar nova sessão
-      console.log('🆕 Criando nova sessão...')
-      
-      const sessionData = {
-        usuario_id: userId,
-        session_id: sessionId,
-        device_fingerprint: deviceFingerprint,
-        browser_name: deviceInfo.browser,
-        os_name: deviceInfo.os,
-        is_mobile: deviceInfo.isMobile,
-        ip_address: 'Unknown',
-        user_agent: deviceInfo.userAgent,
-        device_info: {
-          browser: deviceInfo.browser,
-          os: deviceInfo.os,
-          device: deviceInfo.isMobile ? 'Mobile' : 'Desktop'
         },
-        last_activity: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      }
-      
-      const { error: insertError } = await supabase
-        .from('user_sessions')
-        .insert(sessionData)
-      
-      if (insertError) {
-        console.error('❌ Erro ao criar sessão:', insertError.message)
-        throw insertError
-      }
-      
-      console.log('✅ Nova sessão criada com sucesso')
+        { 
+          onConflict: 'usuario_id,device_fingerprint' 
+        }
+      )
+
+    if (error) {
+      console.error('❌ Erro no upsert de sessão:', error.message)
+    } else {
+      console.log('✅ Sessão atualizada com sucesso')
     }
-    
   } catch (error) {
     console.error('❌ Erro no gerenciamento de sessão:', error)
-    
-    // Log detalhado do erro
-    if (error instanceof Error) {
-      console.error('Mensagem do erro:', error.message)
-    } else if (error && typeof error === 'object') {
-      console.error('Detalhes do erro:', {
-        message: (error as any).message,
-        code: (error as any).code,
-        details: (error as any).details,
-        hint: (error as any).hint
-      })
-    }
   }
 }
 

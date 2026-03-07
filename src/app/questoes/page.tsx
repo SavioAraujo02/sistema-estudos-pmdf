@@ -982,7 +982,7 @@ function QuestoesContent() {
                     )}
                     
                     {questao.explicacao && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 text-justify">
                         💡 {questao.explicacao.substring(0, 200)}
                         {questao.explicacao.length > 200 && '...'}
                       </p>

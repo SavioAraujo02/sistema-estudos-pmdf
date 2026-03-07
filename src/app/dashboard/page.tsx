@@ -5,6 +5,7 @@ import { DashboardLayout } from '@/components/DashboardLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/components/AuthProvider'
 import { getEstatisticasEstudo, zerarEstatisticasUsuario, getAtividadeRecente, EstatisticasCompletas, AtividadeRecenteDB } from '@/lib/estudo'
+import { getRanking, ordenarRanking, UsuarioRanking } from '@/lib/ranking'
 import { getMateriasComEstatisticas } from '@/lib/materias'
 import { 
   Clock, Target, BookOpen, Zap, Users, Settings, 
@@ -48,6 +49,7 @@ export default function DashboardPage() {
   const [materias, setMaterias] = useState<any[]>([])
   const [metaEstudo, setMetaEstudo] = useState<MetaEstudo | null>(null)
   const [atividadeRecente, setAtividadeRecente] = useState<AtividadeRecenteDB[]>([])
+  const [rankingTop, setRankingTop] = useState<UsuarioRanking[]>([])
   const [conquistas, setConquistas] = useState<Conquista[]>([])
   const [alertas, setAlertas] = useState<AlertaInteligente[]>([])
   const [loading, setLoading] = useState(true)
@@ -82,6 +84,11 @@ export default function DashboardPage() {
       setEstatisticas(stats)
       setMaterias(materiasData)
       setAtividadeRecente(atividadeData)
+
+      // Ranking top 5
+      const rankingData = await getRanking().catch(() => [])
+      const top5 = ordenarRanking(rankingData, 'respostas').slice(0, 5)
+      setRankingTop(top5)
 
       // Metas (localStorage ok — é preferência pessoal)
       const metaSalva = localStorage.getItem('meta_estudo')
@@ -542,6 +549,42 @@ export default function DashboardPage() {
                           </div>
                         )}
                       </div>
+                      {/* Mini Ranking */}
+                      {rankingTop.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                              <Trophy className="h-4 w-4 text-amber-500" /> Top 5 Estudantes
+                            </h3>
+                            <Link href="/ranking" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                              Ver completo →
+                            </Link>
+                          </div>
+                          <div className="space-y-2">
+                            {rankingTop.map((usr, idx) => (
+                              <div key={usr.id} className={`flex items-center gap-3 p-2.5 rounded-lg ${
+                                usr.id === user?.id ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-gray-50 dark:bg-gray-900/50'
+                              }`}>
+                                <span className="text-lg w-6 text-center">
+                                  {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}º`}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white truncate">
+                                    {usr.nome} {usr.id === user?.id && '(você)'}
+                                  </p>
+                                  {usr.pelotao && (
+                                    <p className="text-[10px] text-gray-500 truncate">{usr.pelotao}</p>
+                                  )}
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">{usr.totalRespostas}</p>
+                                  <p className="text-[10px] text-gray-500">{usr.percentualAcertos}% acertos</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

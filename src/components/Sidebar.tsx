@@ -1,6 +1,6 @@
 'use client'
 
-import { Home, BookOpen, Target, BarChart3, LogOut, Menu, X, TrendingUp, User } from 'lucide-react'
+import { Home, BookOpen, Target, BarChart3, LogOut, Menu, X, TrendingUp, User, Trophy } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -11,6 +11,7 @@ const menuItems = [
   { icon: BookOpen, label: 'Matérias', href: '/materias' },
   { icon: Target, label: 'Questões', href: '/questoes' },
   { icon: BarChart3, label: 'Estudar', href: '/estudar' },
+  { icon: Trophy, label: 'Ranking', href: '/ranking' },
   { icon: TrendingUp, label: 'Relatórios', href: '/relatorios' },
 ]
 

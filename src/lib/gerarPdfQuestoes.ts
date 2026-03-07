@@ -22,6 +22,17 @@ const CORES = {
   branco: [255, 255, 255] as [number, number, number],
 }
 
+// Limpar texto para PDF (compacto, sem quebras desnecessárias)
+function limparTextoParaPdf(texto: string): string {
+  let limpo = texto
+  // Remover quebras de linha no meio de frases (manter compacto)
+  limpo = limpo.replace(/\r\n/g, ' ')
+  limpo = limpo.replace(/\n/g, ' ')
+  // Remover espaços múltiplos
+  limpo = limpo.replace(/\s{2,}/g, ' ')
+  return limpo.trim()
+}
+
 export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = {}) {
   const {
     titulo = 'Simulado - CFP PMDF',
@@ -156,7 +167,8 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
     const nomeAssunto = questao.assunto?.nome ? ` > ${questao.assunto.nome}` : ''
 
     // Estimar altura
-    const linhasEnunciado = quebrarTexto(questao.enunciado, contentWidth - 12)
+    const textoLimpoEst = limparTextoParaPdf(questao.enunciado)
+    const linhasEnunciado = quebrarTexto(textoLimpoEst, contentWidth - 6)
     let alturaEstimada = 15 + (linhasEnunciado.length * 5)
     
     if (questao.tipo === 'multipla_escolha' && questao.alternativas) {
@@ -188,14 +200,22 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
 
     y += 10
 
-    // Enunciado
+    // Enunciado (justificado e compacto)
     doc.setTextColor(...CORES.cinzaEscuro)
     doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
     
-    linhasEnunciado.forEach((linha: string) => {
+    const textoLimpo = limparTextoParaPdf(questao.enunciado)
+    const linhasLimpas = quebrarTexto(textoLimpo, contentWidth - 6)
+    
+    linhasLimpas.forEach((linha: string, idx: number) => {
       verificarNovaPagina(8)
-      doc.text(linha, marginLeft + 3, y)
+      // Justificar todas as linhas exceto a última do parágrafo
+      if (idx < linhasLimpas.length - 1) {
+        doc.text(linha, marginLeft + 3, y, { align: 'justify', maxWidth: contentWidth - 6 })
+      } else {
+        doc.text(linha, marginLeft + 3, y)
+      }
       y += 5
     })
 
@@ -338,7 +358,7 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
       gabarito.forEach((item) => {
         if (!item.explicacao) return
 
-        const textoExplicacao = item.explicacao.replace(/<[^>]*>/g, '')
+        const textoExplicacao = limparTextoParaPdf(item.explicacao.replace(/<[^>]*>/g, ''))
         const linhas = quebrarTexto(textoExplicacao, contentWidth - 15)
         
         verificarNovaPagina(linhas.length * 4.5 + 15)

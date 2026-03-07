@@ -2,7 +2,7 @@
 
 import { Home, BookOpen, Target, BarChart3, LogOut, Menu, X, TrendingUp, User } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { useAuth } from './AuthProvider'
 
@@ -21,6 +21,7 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const { user, signOut } = useAuth()
 
   // Fechar sidebar automaticamente quando a rota mudar (desktop e mobile)
@@ -33,6 +34,15 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const handleSignOut = async () => {
     await signOut()
     window.location.href = '/login'
+  }
+
+  // ✅ NOVO: Clicar na mesma página recarrega
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    if (pathname === href) {
+      e.preventDefault()
+      router.refresh()
+      window.scrollTo(0, 0)
+    }
   }
 
   // Extrair nome do usuário
@@ -104,6 +114,7 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={(e) => handleNavClick(e, item.href)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group ${
                       isActive
                         ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
@@ -127,6 +138,7 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {/* Botão Dashboard (Início) */}
           <Link
             href="/dashboard"
+            onClick={(e) => handleNavClick(e, '/dashboard')}
             className="flex items-center gap-3 px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors w-full"
             title={!isOpen ? 'Início' : undefined}
           >

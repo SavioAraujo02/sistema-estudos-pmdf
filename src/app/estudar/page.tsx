@@ -401,12 +401,33 @@ export default function EstudarPage() {
         .map(id => materias.find(m => m.id === id)?.nome)
         .filter(Boolean) as string[]
 
+      // Buscar dados do usuário logado
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      let dadosUsuario: { nome: string; cpf?: string; pelotao?: string } | undefined
+
+      if (authUser) {
+        const { data: perfil } = await supabase
+          .from('usuarios')
+          .select('nome_completo, nome, cpf, pelotao')
+          .eq('id', authUser.id)
+          .single()
+
+        if (perfil) {
+          dadosUsuario = {
+            nome: perfil.nome_completo || perfil.nome || '',
+            cpf: perfil.cpf || undefined,
+            pelotao: perfil.pelotao || undefined
+          }
+        }
+      }
+
       gerarPdfQuestoes(questoesData, {
         titulo: configuracao.nomeSessao?.trim() || 'Simulado - CFP PMDF',
         materias: nomesM.length > 0 ? nomesM : ['Todas as matérias'],
         incluirGabarito: true,
         incluirExplicacoes: true,
         incluirEspacoResposta: true,
+        usuario: dadosUsuario,
       })
 
     } catch (error) {

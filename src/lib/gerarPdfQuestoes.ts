@@ -8,6 +8,11 @@ interface ConfigPdf {
   incluirGabarito?: boolean
   incluirExplicacoes?: boolean
   incluirEspacoResposta?: boolean
+  usuario?: {
+    nome: string
+    cpf?: string
+    pelotao?: string
+  }
 }
 
 const CORES = {
@@ -135,18 +140,50 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
 
   y = infoY + 10
 
-  // Campos: Nome, Data, Nota
+  // Campos: Nome, CPF, Pelotão, Data
   doc.setFontSize(10)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...CORES.cinzaEscuro)
-  doc.text('Nome:', marginLeft, y)
-  doc.setDrawColor(180, 180, 180)
-  doc.line(marginLeft + 18, y, pageWidth - marginRight, y)
-  y += 7
-  doc.text('Data:', marginLeft, y)
-  doc.line(marginLeft + 16, y, marginLeft + 60, y)
-  doc.text('Nota:', marginLeft + 70, y)
-  doc.line(marginLeft + 84, y, marginLeft + 120, y)
+
+  if (config.usuario?.nome) {
+    // Preenchido automaticamente
+    doc.text('Nome:', marginLeft, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(config.usuario.nome, marginLeft + 18, y)
+    doc.setDrawColor(180, 180, 180)
+    doc.line(marginLeft + 18, y + 1, pageWidth - marginRight, y + 1)
+    y += 7
+
+    doc.setFont('helvetica', 'bold')
+    doc.text('CPF:', marginLeft, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(config.usuario.cpf || '_______________', marginLeft + 15, y)
+    doc.line(marginLeft + 15, y + 1, marginLeft + 60, y + 1)
+
+    if (config.usuario.pelotao) {
+      doc.setFont('helvetica', 'bold')
+      doc.text('Pelotão:', marginLeft + 65, y)
+      doc.setFont('helvetica', 'normal')
+      doc.text(config.usuario.pelotao, marginLeft + 88, y)
+      doc.line(marginLeft + 88, y + 1, marginLeft + 130, y + 1)
+    }
+
+    doc.setFont('helvetica', 'bold')
+    const dataX = config.usuario.pelotao ? marginLeft + 135 : marginLeft + 65
+    doc.text('Data:', dataX, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(new Date().toLocaleDateString('pt-BR'), dataX + 16, y)
+  } else {
+    // Campos em branco para preencher à mão
+    doc.text('Nome:', marginLeft, y)
+    doc.setDrawColor(180, 180, 180)
+    doc.line(marginLeft + 18, y, pageWidth - marginRight, y)
+    y += 7
+    doc.text('Data:', marginLeft, y)
+    doc.line(marginLeft + 16, y, marginLeft + 60, y)
+    doc.text('Nota:', marginLeft + 70, y)
+    doc.line(marginLeft + 84, y, marginLeft + 120, y)
+  }
   
   y += 10
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { comCache, cacheInvalidarPrefixo } from './cache'
 import { Materia } from '@/types/database'
 
 export async function getMaterias(): Promise<Materia[]> {
@@ -32,9 +33,11 @@ export async function createMateria(nome: string, descricao?: string): Promise<M
 
 export async function getMateriasComEstatisticas() {
   try {
-    console.time('⏱️ getMateriasComEstatisticas')
-    
     const { data: { user } } = await supabase.auth.getUser()
+    const cacheKey = `materias_stats_${user?.id || 'anon'}`
+
+    return await comCache(cacheKey, async () => {
+    console.time('⏱️ getMateriasComEstatisticas')
 
     // 1. Buscar matérias básicas
     const { data: materias, error: materiasError } = await supabase
@@ -115,6 +118,7 @@ export async function getMateriasComEstatisticas() {
     console.timeEnd('⏱️ getMateriasComEstatisticas')
     return materiasComStats
 
+    }, 3 * 60 * 1000) // Cache por 3 minutos
   } catch (error) {
     console.error('Erro inesperado ao carregar matérias:', error)
     return []

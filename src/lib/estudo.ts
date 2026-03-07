@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { cacheInvalidarPrefixo } from './cache'
 
 export interface QuestaoEstudo {
   id: string
@@ -262,6 +263,9 @@ export async function salvarResposta(
       console.error('Erro ao salvar resposta:', error)
       return false
     }
+
+    // Invalidar cache de matérias (estatísticas mudaram)
+    cacheInvalidarPrefixo('materias_stats')
 
     return true
   } catch (error) {

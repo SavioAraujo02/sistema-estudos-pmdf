@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { createOrUpdateSession, updateSessionActivity } from '@/lib/sessionManager'
+import { createOrUpdateSession, updateSessionActivity, cleanupOldSessions } from '@/lib/sessionManager'
 
 interface UsuarioStatus {
   status: 'pendente' | 'ativo' | 'expirado' | 'bloqueado'
@@ -272,6 +272,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Atualizar atividade da sessão periodicamente
   useEffect(() => {
     if (!user) return
+
+    // Limpar sessões antigas uma vez por sessão
+    cleanupOldSessions()
 
     const updateActivity = async () => {
       await updateSessionActivity(user.id)

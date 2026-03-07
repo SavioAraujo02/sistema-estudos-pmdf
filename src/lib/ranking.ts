@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { comCache } from './cache'
 
 export interface UsuarioRanking {
   id: string
@@ -16,7 +17,8 @@ export type CategoriaRanking = 'respostas' | 'acertos' | 'consecutivos' | 'hoje'
 
 // Buscar ranking completo
 export async function getRanking(): Promise<UsuarioRanking[]> {
-  try {
+    return comCache('ranking_geral', async () => {
+    try {
     // 1. Buscar usuários ativos
     const { data: usuarios, error: usrError } = await supabase
       .from('usuarios')
@@ -110,6 +112,7 @@ export async function getRanking(): Promise<UsuarioRanking[]> {
     console.error('Erro ao buscar ranking:', error)
     return []
   }
+  }, 5 * 60 * 1000) // Cache por 5 minutos
 }
 
 // Ordenar por categoria

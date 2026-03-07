@@ -47,29 +47,47 @@ export async function getMateriasComEstatisticas() {
       return []
     }
 
-    // 2. Buscar contagem de questões por matéria
-    const { data: todasQuestoes } = await supabase
-      .from('questoes')
-      .select('id, materia_id, tipo')
+    // 2. Buscar TODAS as questões (Supabase limita a 1000 por padrão)
+    const BATCH = 1000
+    let todasQuestoes: any[] = []
+    let offset = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('questoes')
+        .select('id, materia_id, tipo')
+        .range(offset, offset + BATCH - 1)
+      
+      if (error || !data || data.length === 0) break
+      todasQuestoes = [...todasQuestoes, ...data]
+      if (data.length < BATCH) break
+      offset += BATCH
+    }
 
     // 3. Buscar histórico de respostas do usuário (SE logado)
     let historico: any[] = []
     if (user) {
-      const { data: historicoData } = await supabase
-        .from('historico_estudos')
-        .select(`
-          acertou,
-          questoes!inner(materia_id)
-        `)
-        .eq('usuario_id', user.id)
-
-      historico = historicoData || []
+      let hOffset = 0
+      while (true) {
+        const { data, error } = await supabase
+          .from('historico_estudos')
+          .select(`
+            acertou,
+            questoes!inner(materia_id)
+          `)
+          .eq('usuario_id', user.id)
+          .range(hOffset, hOffset + BATCH - 1)
+        
+        if (error || !data || data.length === 0) break
+        historico = [...historico, ...data]
+        if (data.length < BATCH) break
+        hOffset += BATCH
+      }
     }
 
     // 4. Montar estatísticas por matéria
     const materiasComStats = (materias || []).map((materia) => {
       // Contagens de questões
-      const questoesMateria = (todasQuestoes || []).filter(q => q.materia_id === materia.id)
+      const questoesMateria = todasQuestoes.filter(q => q.materia_id === materia.id)
       const questoesCount = questoesMateria.length
       const certoErrado = questoesMateria.filter(q => q.tipo === 'certo_errado').length
       const multipla = questoesMateria.filter(q => q.tipo === 'multipla_escolha').length
@@ -103,7 +121,6 @@ export async function getMateriasComEstatisticas() {
   }
 }
 
-
 export async function updateMateria(id: string, nome: string, descricao?: string): Promise<boolean> {
   const { error } = await supabase
     .from('materias')
@@ -120,7 +137,6 @@ export async function updateMateria(id: string, nome: string, descricao?: string
 
 export async function deleteMateria(id: string): Promise<boolean> {
   try {
-    // Primeiro, verificar se há questões vinculadas
     const { data: questoes, error: questoesError } = await supabase
       .from('questoes')
       .select('id')
@@ -136,7 +152,6 @@ export async function deleteMateria(id: string): Promise<boolean> {
       throw new Error('Não é possível excluir uma matéria que possui questões cadastradas.')
     }
 
-    // Se não há questões, pode excluir
     const { error } = await supabase
       .from('materias')
       .delete()

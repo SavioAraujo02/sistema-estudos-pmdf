@@ -22,6 +22,8 @@ import {
 } from '@/lib/progresso'
 import { FiltrosInteligentes } from '@/components/FiltrosInteligentes'
 import { getEstatisticasFiltros } from '@/lib/estudo'
+import { gerarPdfQuestoes } from '@/lib/gerarPdfQuestoes'
+import { FileDown } from 'lucide-react'
 
 interface ResultadoSessao {
   totalQuestoes: number
@@ -352,6 +354,55 @@ export default function EstudarPage() {
     } catch (error) {
       console.error('Erro ao contar questões:', error)
       return 0
+    }
+  }
+
+  const [gerandoPdf, setGerandoPdf] = useState(false)
+
+  const gerarPdf = async () => {
+    setGerandoPdf(true)
+    try {
+      const materiasParaBusca = configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length > 0
+        ? configuracao.materiasSelecionadas
+        : configuracao.materiaId
+
+      const limite = configuracao.numeroQuestoes === 'todas' 
+        ? undefined 
+        : configuracao.numeroQuestoes as number
+
+      const questoesData = await getQuestoesParaEstudo(materiasParaBusca, limite, undefined, {
+        assuntoIds: configuracao.assuntoIds,
+        dificuldade: configuracao.dificuldade,
+        anoProva: configuracao.anoProva,
+        banca: configuracao.banca,
+        apenasNaoRespondidas: configuracao.apenasNaoRespondidas,
+        apenasErradas: configuracao.apenasErradas,
+        revisaoQuestoesDificeis: configuracao.revisaoQuestoesDificeis,
+        embaralhar: configuracao.embaralhar
+      })
+
+      if (questoesData.length === 0) {
+        alert('Nenhuma questão encontrada para os filtros selecionados.')
+        return
+      }
+
+      const nomesM = (configuracao.materiasSelecionadas || [])
+        .map(id => materias.find(m => m.id === id)?.nome)
+        .filter(Boolean) as string[]
+
+      gerarPdfQuestoes(questoesData, {
+        titulo: configuracao.nomeSessao?.trim() || 'Simulado - CFP PMDF',
+        materias: nomesM.length > 0 ? nomesM : ['Todas as matérias'],
+        incluirGabarito: true,
+        incluirExplicacoes: true,
+        incluirEspacoResposta: true,
+      })
+
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error)
+      alert('Erro ao gerar PDF. Tente novamente.')
+    } finally {
+      setGerandoPdf(false)
     }
   }
 
@@ -1289,13 +1340,13 @@ export default function EstudarPage() {
             </button>
 
             {/* ==================== */}
-            {/* Botão INICIAR (Desktop) */}
+            {/* Botões INICIAR + PDF (Desktop) */}
             {/* ==================== */}
-            <div className="hidden sm:block">
+            <div className="hidden sm:flex gap-3">
               <button
                 onClick={iniciarSessao}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2.5 px-6 py-4 lg:py-5 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base lg:text-lg font-semibold shadow-lg shadow-emerald-600/20"
+                className="flex-1 flex items-center justify-center gap-2.5 px-6 py-4 lg:py-5 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base lg:text-lg font-semibold shadow-lg shadow-emerald-600/20"
               >
                 {loading ? (
                   <>
@@ -1308,6 +1359,19 @@ export default function EstudarPage() {
                     {isAdmin ? 'Iniciar Teste' : 'Iniciar Sessão'}
                   </>
                 )}
+              </button>
+              <button
+                onClick={gerarPdf}
+                disabled={gerandoPdf || loading}
+                className="flex items-center justify-center gap-2 px-5 py-4 lg:py-5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm lg:text-base font-semibold"
+                title="Gerar PDF para impressão"
+              >
+                {gerandoPdf ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                ) : (
+                  <FileDown className="h-5 w-5" />
+                )}
+                PDF
               </button>
             </div>
 

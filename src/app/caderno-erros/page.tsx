@@ -72,8 +72,37 @@ export default function CadernoErrosPage() {
   }
 
   const iniciarRevisaoMateria = (materiaId: string) => {
-    window.location.href = `/estudar?materia=${materiaId}`
+    // Pegar todas as questões erradas dessa matéria
+    const questoesMateria = questoes.filter(q => q.materiaId === materiaId)
+    
+    if (questoesMateria.length === 0) return
+
+    const nomeMateria = questoesMateria[0].materia
+
+    const dadosEstudo = {
+      questoes: questoesMateria.map(q => ({
+        id: q.id,
+        enunciado: q.enunciado,
+        tipo: q.tipo,
+        explicacao: q.explicacao,
+        resposta_certo_errado: q.resposta_certo_errado,
+        materia: { nome: q.materia },
+        assunto: q.assunto ? { id: '', nome: q.assunto, cor: '#6366f1' } : undefined,
+        alternativas: q.alternativas
+      })),
+      configuracao: {
+        modoEstudo: 'revisao',
+        salvarHistorico: true,
+        materiaId: materiaId,
+        assuntoIds: [],
+        numeroQuestoes: questoesMateria.length
+      }
+    }
+
+    localStorage.setItem('estudo_questao_especifica', JSON.stringify(dadosEstudo))
+    window.location.href = '/estudar?modo=questao-especifica'
   }
+
 
   if (loading) {
     return (
@@ -324,12 +353,12 @@ export default function CadernoErrosPage() {
                             >
                               <Play className="h-3 w-3" /> Refazer
                             </button>
-                            <Link
-                              href={`/estudar?materia=${q.materiaId}`}
+                            <button
+                              onClick={() => iniciarRevisaoMateria(q.materiaId)}
                               className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-[10px] sm:text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1"
                             >
                               <Target className="h-3 w-3" /> Matéria
-                            </Link>
+                            </button>
                           </div>
                         </div>
                       </div>

@@ -143,6 +143,14 @@ export default function EstudarPage() {
     atualizarEstatisticasFiltros()
   }, [configuracao.materiasSelecionadas, configuracao.materiaId])
 
+  // Limpar assuntos selecionados quando mudar de matéria ou selecionar múltiplas
+  useEffect(() => {
+    const qtd = configuracao.materiasSelecionadas?.length || 0
+    if (qtd !== 1 && configuracao.assuntoIds.length > 0) {
+      setConfiguracao(prev => ({...prev, assuntoIds: []}))
+    }
+  }, [configuracao.materiasSelecionadas])
+
   useEffect(() => {
     carregarSessoesAtivas()
   }, [])
@@ -619,7 +627,7 @@ export default function EstudarPage() {
     return (
       <ProtectedRoute>
         <DashboardLayout title="Resultado da Sessão">
-          <div className="max-w-2xl mx-auto space-y-5 px-1">
+          <div className="max-w-2xl lg:max-w-4xl mx-auto space-y-5 px-1">
             
             {/* Card principal do resultado */}
             <div className={`relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-700 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
@@ -628,11 +636,11 @@ export default function EstudarPage() {
                 corPrincipal === 'emerald' ? 'bg-emerald-500' : corPrincipal === 'amber' ? 'bg-amber-500' : 'bg-red-500'
               }`} />
               
-              <div className="p-6 sm:p-8 text-center">
+              <div className="p-6 sm:p-8 lg:p-10 text-center">
                 <div className={`text-6xl sm:text-7xl mb-3 transition-all duration-700 delay-200 ${animarResultado ? 'scale-100' : 'scale-50'}`}>
                   {emoji}
                 </div>
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-1">
                   {isAdmin ? 'Teste Finalizado!' : mensagem}
                 </h2>
                 <p className="text-gray-500 dark:text-gray-400 text-sm sm:text-base">
@@ -641,13 +649,13 @@ export default function EstudarPage() {
                 
                 {/* Percentual grande */}
                 <div className={`mt-6 mb-2 transition-all duration-700 delay-300 ${animarResultado ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
-                  <div className={`inline-flex items-center justify-center w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 ${
+                  <div className={`inline-flex items-center justify-center w-28 h-28 sm:w-32 sm:h-32 lg:w-40 lg:h-40 rounded-full border-4 ${
                     corPrincipal === 'emerald' ? 'border-emerald-200 dark:border-emerald-800' : 
                     corPrincipal === 'amber' ? 'border-amber-200 dark:border-amber-800' : 
                     'border-red-200 dark:border-red-800'
                   }`}>
                     <div>
-                      <div className={`text-3xl sm:text-4xl font-bold ${
+                      <div className={`text-3xl sm:text-4xl lg:text-5xl font-bold ${
                         corPrincipal === 'emerald' ? 'text-emerald-600' : 
                         corPrincipal === 'amber' ? 'text-amber-600' : 
                         'text-red-600'
@@ -662,25 +670,25 @@ export default function EstudarPage() {
             </div>
 
             {/* Grid de métricas */}
-            <div className={`grid grid-cols-3 gap-3 transition-all duration-500 delay-400 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-                <Trophy className="h-5 w-5 text-emerald-500 mx-auto mb-1.5" />
-                <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">{resultado.acertos}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Acertos</div>
+            <div className={`grid grid-cols-3 lg:grid-cols-3 gap-3 lg:gap-4 transition-all duration-500 delay-400 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 lg:p-6 text-center">
+                <Trophy className="h-5 w-5 lg:h-6 lg:w-6 text-emerald-500 mx-auto mb-1.5" />
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{resultado.acertos}</div>
+                <div className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">Acertos</div>
               </div>
               
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-                <Clock className="h-5 w-5 text-blue-500 mx-auto mb-1.5" />
-                <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">{formatarTempo(resultado.tempo)}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Tempo</div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 lg:p-6 text-center">
+                <Clock className="h-5 w-5 lg:h-6 lg:w-6 text-blue-500 mx-auto mb-1.5" />
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{formatarTempo(resultado.tempo)}</div>
+                <div className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">Tempo</div>
               </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-                <Zap className="h-5 w-5 text-amber-500 mx-auto mb-1.5" />
-                <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 lg:p-6 text-center">
+                <Zap className="h-5 w-5 lg:h-6 lg:w-6 text-amber-500 mx-auto mb-1.5" />
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">
                   {Math.round(resultado.tempo / resultado.totalQuestoes / 1000)}s
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Média/Q</div>
+                <div className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">Média/Q</div>
               </div>
             </div>
 
@@ -690,7 +698,7 @@ export default function EstudarPage() {
                 <BarChart3 className="h-4 w-4 text-gray-400" />
                 Detalhes
               </h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">Modo</span>
                   <span className="font-medium text-gray-900 dark:text-white">
@@ -725,14 +733,14 @@ export default function EstudarPage() {
             <div className={`flex flex-col sm:flex-row gap-3 transition-all duration-500 delay-600 ${animarResultado ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <button
                 onClick={novaSessionao}
-                className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all font-medium"
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 lg:py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all font-medium lg:text-lg"
               >
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className="h-4 w-4 lg:h-5 lg:w-5" />
                 Nova Sessão
               </button>
               <button
                 onClick={() => setModo('configuracao')}
-                className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-[0.98] transition-all font-medium"
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 lg:py-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-[0.98] transition-all font-medium lg:text-lg"
               >
                 <Settings className="h-4 w-4" />
                 Reconfigurar
@@ -750,29 +758,42 @@ export default function EstudarPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout title={isAdmin ? "🧪 Modo Teste" : "🎓 Configurar Estudo"}>
-        <div className="max-w-2xl mx-auto pb-28 sm:pb-6">
+        <div className="max-w-2xl lg:max-w-6xl mx-auto pb-28 sm:pb-6">
           <div className="space-y-4 sm:space-y-5 px-1">
             
             {/* Header compacto */}
-            <div className={`rounded-2xl p-5 sm:p-6 text-white relative overflow-hidden ${
+            <div className={`rounded-2xl p-5 sm:p-6 lg:p-8 text-white relative overflow-hidden ${
               isAdmin 
                 ? 'bg-gradient-to-br from-violet-600 to-indigo-700'
                 : 'bg-gradient-to-br from-blue-600 to-cyan-600'
             }`}>
               <div className="relative z-10">
-                <h2 className="text-lg sm:text-xl font-bold mb-1">
-                  {isAdmin ? 'Modo Teste' : 'Nova Sessão de Estudo'}
-                </h2>
-                <p className="text-sm opacity-80">
-                  {isAdmin 
-                    ? 'Teste questões sem afetar estatísticas'
-                    : 'Configure e inicie sua sessão'
-                  }
-                </p>
-                <div className="mt-3 inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 text-sm">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  <span className="font-medium">{totalQuestoesDisp}</span>
-                  <span className="opacity-80">questões disponíveis</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-1">
+                      {isAdmin ? 'Modo Teste' : 'Nova Sessão de Estudo'}
+                    </h2>
+                    <p className="text-sm lg:text-base opacity-80">
+                      {isAdmin 
+                        ? 'Teste questões sem afetar estatísticas'
+                        : 'Configure e inicie sua sessão personalizada'
+                      }
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-3 py-1.5 lg:px-4 lg:py-2 text-sm">
+                      <BookOpen className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                      <span className="font-medium">{totalQuestoesDisp}</span>
+                      <span className="opacity-80">questões</span>
+                    </div>
+                    {!isAdmin && estatisticas && estatisticas.totalRespostas > 0 && (
+                      <div className="hidden lg:inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-4 py-2 text-sm">
+                        <Target className="h-4 w-4" />
+                        <span className="font-medium">{estatisticas.percentualAcertos}%</span>
+                        <span className="opacity-80">acertos</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               {/* Decoração sutil */}
@@ -822,33 +843,41 @@ export default function EstudarPage() {
 
             {/* Progresso do usuário (compacto) */}
             {!isAdmin && estatisticas && estatisticas.totalRespostas > 0 && (
-              <div className="grid grid-cols-3 gap-2.5">
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
-                  <div className="text-lg sm:text-xl font-bold text-blue-600">{estatisticas.totalRespostas}</div>
-                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Respondidas</div>
+              <div className="grid grid-cols-3 lg:grid-cols-3 gap-2.5 lg:gap-4">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 lg:p-5 text-center">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{estatisticas.totalRespostas}</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Respondidas</div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
-                  <div className="text-lg sm:text-xl font-bold text-emerald-600">{estatisticas.acertos}</div>
-                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Acertos</div>
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 lg:p-5 text-center">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-emerald-600">{estatisticas.acertos}</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Acertos</div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
-                  <div className="text-lg sm:text-xl font-bold text-violet-600">{estatisticas.percentualAcertos}%</div>
-                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Taxa</div>
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 lg:p-5 text-center">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-violet-600">{estatisticas.percentualAcertos}%</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Taxa</div>
                 </div>
               </div>
             )}
 
             {/* ==================== */}
+            {/* GRID RESPONSIVO: 2 colunas em telas grandes */}
+            {/* ==================== */}
+            <div className="lg:grid lg:grid-cols-2 lg:gap-5 space-y-4 sm:space-y-5 lg:space-y-0">
+              
+              {/* COLUNA ESQUERDA */}
+              <div className="space-y-4 sm:space-y-5">
+
+            {/* ==================== */}
             {/* SEÇÃO: Modo de Estudo */}
             {/* ==================== */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <Zap className="h-4 w-4 text-amber-500" />
                   Modo de Estudo
                 </h3>
               </div>
-              <div className="px-4 sm:px-5 pb-4 sm:pb-5">
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {(['normal', 'revisao', 'rapido'] as const).map((m) => {
                     const info = getModoEstudoInfo(m)
@@ -867,7 +896,7 @@ export default function EstudarPage() {
                         <span className={`text-xs sm:text-sm font-semibold ${selecionado ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}>
                           {info.nome}
                         </span>
-                        <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 leading-tight hidden sm:block">
+                        <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 leading-tight hidden sm:block lg:text-xs">
                           {info.desc}
                         </span>
                         {selecionado && (
@@ -886,9 +915,9 @@ export default function EstudarPage() {
             {/* SEÇÃO: Matérias */}
             {/* ==================== */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-blue-500" />
                     Matérias
                   </h3>
@@ -902,7 +931,7 @@ export default function EstudarPage() {
                   )}
                 </div>
               </div>
-              <div className="px-4 sm:px-5 pb-4 sm:pb-5">
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
                 {/* Chip "Todas" */}
                 <div className="flex flex-wrap gap-2 mb-3">
                   <button
@@ -941,7 +970,7 @@ export default function EstudarPage() {
                 )}
 
                 {/* Lista de matérias como chips */}
-                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                <div className="flex flex-wrap gap-2 max-h-48 lg:max-h-72 overflow-y-auto">
                   {materias
                     .filter(m => !buscaMateria || m.nome.toLowerCase().includes(buscaMateria.toLowerCase()))
                     .map((materia) => {
@@ -957,7 +986,7 @@ export default function EstudarPage() {
                           }`}
                         >
                           {selecionada && <Check className="h-3 w-3" />}
-                          <span className="truncate max-w-[140px] sm:max-w-[200px]">{materia.nome}</span>
+                          <span className="truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px]">{materia.nome}</span>
                           <span className="opacity-50 text-[10px]">{materia.questoes_count}</span>
                         </button>
                       )
@@ -971,37 +1000,50 @@ export default function EstudarPage() {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       Selecionadas: {materiasSelecionadasNomes.join(', ')}
                     </p>
+                    {materiasSelecionadasNomes.length === 1 && (
+                      <p className="text-xs text-violet-500 dark:text-violet-400 mt-1">
+                        💡 Com 1 matéria selecionada, você pode filtrar por assuntos abaixo
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Seleção de Assuntos */}
-            {configuracao.materiaId && (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            {/* Seleção de Assuntos — aparece quando UMA matéria está selecionada */}
+            {configuracao.materiasSelecionadas && configuracao.materiasSelecionadas.length === 1 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 lg:p-6">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                   <Layers className="h-4 w-4 text-violet-500" />
-                  Assuntos Específicos
+                  Assuntos de {materias.find(m => m.id === configuracao.materiasSelecionadas![0])?.nome || 'Matéria'}
                 </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Filtre por assuntos específicos dentro da matéria selecionada
+                </p>
                 <SeletorAssuntos
-                  materiaId={configuracao.materiaId}
+                  materiaId={configuracao.materiasSelecionadas[0]}
                   assuntosSelecionados={configuracao.assuntoIds}
                   onChange={(assuntos) => setConfiguracao({...configuracao, assuntoIds: assuntos})}
                 />
               </div>
             )}
 
+              </div>{/* FIM COLUNA ESQUERDA */}
+              
+              {/* COLUNA DIREITA */}
+              <div className="space-y-4 sm:space-y-5">
+
             {/* ==================== */}
             {/* SEÇÃO: Quantidade */}
             {/* ==================== */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <Hash className="h-4 w-4 text-emerald-500" />
                   Quantidade de Questões
                 </h3>
               </div>
-              <div className="px-4 sm:px-5 pb-4 sm:pb-5">
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
                 <div className="grid grid-cols-5 gap-2">
                   {[5, 10, 20, 50].map((num) => (
                     <button
@@ -1051,13 +1093,13 @@ export default function EstudarPage() {
             {/* SEÇÃO: Ordem */}
             {/* ==================== */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <Shuffle className="h-4 w-4 text-violet-500" />
                   Ordem das Questões
                 </h3>
               </div>
-              <div className="px-4 sm:px-5 pb-4 sm:pb-5">
+              <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <button
                     onClick={() => setConfiguracao({...configuracao, embaralhar: false})}
@@ -1093,7 +1135,7 @@ export default function EstudarPage() {
             {/* SEÇÃO: Filtros Inteligentes */}
             {/* ==================== */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-4 sm:pb-5">
+              <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-4 sm:pb-5">
                 <FiltrosInteligentes
                   filtros={{
                     apenasNaoRespondidas: configuracao.apenasNaoRespondidas || false,
@@ -1126,7 +1168,7 @@ export default function EstudarPage() {
               </button>
               
               {secaoAvancadaAberta && (
-                <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
                   {/* Nome da sessão */}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
@@ -1191,10 +1233,13 @@ export default function EstudarPage() {
               )}
             </div>
 
+              </div>{/* FIM COLUNA DIREITA */}
+            </div>{/* FIM GRID RESPONSIVO */}
+
             {/* ==================== */}
             {/* Resumo da Sessão */}
             {/* ==================== */}
-            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 lg:p-6">
               <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
                 Resumo da Sessão
               </h4>
@@ -1205,6 +1250,11 @@ export default function EstudarPage() {
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
                   📚 {(configuracao.materiasSelecionadas || []).length > 0 ? `${(configuracao.materiasSelecionadas || []).length} matéria(s)` : 'Todas'}
                 </span>
+                {configuracao.assuntoIds.length > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-violet-50 dark:bg-violet-900/20 rounded-lg text-xs font-medium text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700">
+                    📑 {configuracao.assuntoIds.length} assunto(s)
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
                   🔢 {configuracao.numeroQuestoes === 'todas' ? 'Todas' : configuracao.numeroQuestoes} questões
                 </span>
@@ -1227,7 +1277,7 @@ export default function EstudarPage() {
             {/* Gerenciar sessões (link, não botão grande) */}
             <button
               onClick={() => setShowGerenciadorSessoesModal(true)}
-              className="w-full flex items-center justify-between px-4 py-3.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors min-h-[52px] group"
+              className="w-full flex items-center justify-between px-4 py-3.5 lg:px-5 lg:py-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors min-h-[52px] group"
             >
               <div className="flex items-center gap-2.5">
                 <Layers className="h-4 w-4 text-violet-500" />
@@ -1245,7 +1295,7 @@ export default function EstudarPage() {
               <button
                 onClick={iniciarSessao}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2.5 px-6 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base font-semibold shadow-lg shadow-emerald-600/20"
+                className="w-full flex items-center justify-center gap-2.5 px-6 py-4 lg:py-5 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base lg:text-lg font-semibold shadow-lg shadow-emerald-600/20"
               >
                 {loading ? (
                   <>
@@ -1262,7 +1312,7 @@ export default function EstudarPage() {
             </div>
 
             {/* Dicas (simplificadas) */}
-            <div className={`rounded-xl p-4 text-xs sm:text-sm ${
+            <div className={`rounded-xl p-4 lg:p-5 text-xs sm:text-sm ${
               isAdmin 
                 ? 'bg-violet-50 dark:bg-violet-900/10 text-violet-700 dark:text-violet-400'
                 : 'bg-blue-50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400'

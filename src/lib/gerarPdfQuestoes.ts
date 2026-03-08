@@ -27,13 +27,10 @@ const CORES = {
   branco: [255, 255, 255] as [number, number, number],
 }
 
-// Limpar texto para PDF (compacto, sem quebras desnecessárias)
 function limparTextoParaPdf(texto: string): string {
   let limpo = texto
-  // Remover quebras de linha no meio de frases (manter compacto)
   limpo = limpo.replace(/\r\n/g, ' ')
   limpo = limpo.replace(/\n/g, ' ')
-  // Remover espaços múltiplos
   limpo = limpo.replace(/\s{2,}/g, ' ')
   return limpo.trim()
 }
@@ -45,157 +42,144 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
     assuntos = [],
     incluirGabarito = true,
     incluirExplicacoes = true,
-    incluirEspacoResposta = true,
   } = config
 
   const doc = new jsPDF('p', 'mm', 'a4')
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const pageHeight = doc.internal.pageSize.getHeight()
-  const marginLeft = 15
-  const marginRight = 15
-  const contentWidth = pageWidth - marginLeft - marginRight
+  const pw = doc.internal.pageSize.getWidth()
+  const ph = doc.internal.pageSize.getHeight()
+  const ml = 15
+  const mr = 15
+  const cw = pw - ml - mr
+  // Margem inferior: rodapé ocupa ~20mm
+  const mbRodape = 22
   let y = 0
 
-  const quebrarTexto = (texto: string, maxWidth: number): string[] => {
-    return doc.splitTextToSize(texto, maxWidth)
+  const quebrar = (texto: string, maxW: number): string[] => {
+    return doc.splitTextToSize(texto, maxW)
   }
 
-  const verificarNovaPagina = (alturaMinima: number) => {
-    if (y + alturaMinima > pageHeight - 20) {
+  const novaPagina = (alt: number): boolean => {
+    if (y + alt > ph - mbRodape) {
       doc.addPage()
-      y = 15
+      y = 12
       return true
     }
     return false
   }
 
   // ==========================================
-  // CAPA / CABEÇALHO
+  // CAPA
   // ==========================================
-  
   doc.setFillColor(...CORES.azulEscuro)
-  doc.rect(0, 0, pageWidth, 45, 'F')
+  doc.rect(0, 0, pw, 40, 'F')
 
   doc.setTextColor(...CORES.branco)
-  doc.setFontSize(22)
+  doc.setFontSize(20)
   doc.setFont('helvetica', 'bold')
-  doc.text(titulo, pageWidth / 2, 18, { align: 'center' })
-
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'normal')
-  const dataHoje = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-  doc.text(dataHoje, pageWidth / 2, 27, { align: 'center' })
+  doc.text(titulo, pw / 2, 16, { align: 'center' })
 
   doc.setFontSize(10)
-  doc.text(`${questoes.length} questões`, pageWidth / 2, 36, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  const dataHoje = new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  })
+  doc.text(dataHoje, pw / 2, 25, { align: 'center' })
 
-  y = 52
+  doc.setFontSize(9)
+  doc.text(`${questoes.length} questões`, pw / 2, 33, { align: 'center' })
+
+  y = 46
 
   // Box de informações
   const temInfoExtra = materias.length > 0 || assuntos.length > 0
+  const boxH = temInfoExtra ? 22 : 14
   doc.setFillColor(...CORES.cinzaClaro)
-  doc.roundedRect(marginLeft, y, contentWidth, temInfoExtra ? 28 : 18, 3, 3, 'F')
+  doc.roundedRect(ml, y, cw, boxH, 2, 2, 'F')
 
   doc.setTextColor(...CORES.cinzaEscuro)
-  doc.setFontSize(9)
+  doc.setFontSize(8)
   doc.setFont('helvetica', 'bold')
   
-  let infoY = y + 7
+  let infoY = y + 5
 
   if (materias.length > 0) {
-    doc.text('Matérias:', marginLeft + 5, infoY)
+    doc.text('Matérias:', ml + 4, infoY)
     doc.setFont('helvetica', 'normal')
-    const materiasText = materias.join(', ')
-    const materiasLinhas = quebrarTexto(materiasText, contentWidth - 30)
-    doc.text(materiasLinhas[0], marginLeft + 28, infoY)
-    infoY += 6
+    doc.text(quebrar(materias.join(', '), cw - 28)[0], ml + 26, infoY)
+    infoY += 5
   }
 
   if (assuntos.length > 0) {
     doc.setFont('helvetica', 'bold')
-    doc.text('Assuntos:', marginLeft + 5, infoY)
+    doc.text('Assuntos:', ml + 4, infoY)
     doc.setFont('helvetica', 'normal')
-    const assuntosText = assuntos.join(', ')
-    const assuntosLinhas = quebrarTexto(assuntosText, contentWidth - 30)
-    doc.text(assuntosLinhas[0], marginLeft + 28, infoY)
-    infoY += 6
+    doc.text(quebrar(assuntos.join(', '), cw - 28)[0], ml + 26, infoY)
+    infoY += 5
   }
 
   doc.setFont('helvetica', 'bold')
-  doc.text('Total:', marginLeft + 5, infoY)
+  doc.text('Total:', ml + 4, infoY)
   doc.setFont('helvetica', 'normal')
-  
   const totalCE = questoes.filter(q => q.tipo === 'certo_errado').length
   const totalME = questoes.filter(q => q.tipo === 'multipla_escolha').length
   let resumo = `${questoes.length} questões`
-  if (totalCE > 0) resumo += ` (${totalCE} Certo/Errado`
-  if (totalME > 0) resumo += `${totalCE > 0 ? ', ' : ' ('}${totalME} Múltipla Escolha`
+  if (totalCE > 0) resumo += ` (${totalCE} C/E`
+  if (totalME > 0) resumo += `${totalCE > 0 ? ', ' : ' ('}${totalME} ME`
   if (totalCE > 0 || totalME > 0) resumo += ')'
-  doc.text(resumo, marginLeft + 22, infoY)
+  doc.text(resumo, ml + 20, infoY)
 
-  y = infoY + 10
+  y = y + boxH + 5
 
   // Campos: Nome, CPF, Pelotão, Data
-  doc.setFontSize(10)
+  doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...CORES.cinzaEscuro)
 
   if (config.usuario?.nome) {
-    // Preenchido automaticamente
-    doc.text('Nome:', marginLeft, y)
+    doc.text('Nome:', ml, y)
     doc.setFont('helvetica', 'normal')
-    doc.text(config.usuario.nome, marginLeft + 18, y)
+    doc.text(config.usuario.nome, ml + 16, y)
     doc.setDrawColor(180, 180, 180)
-    doc.line(marginLeft + 18, y + 1, pageWidth - marginRight, y + 1)
-    y += 7
+    doc.line(ml + 16, y + 1, pw - mr, y + 1)
+    y += 6
 
     doc.setFont('helvetica', 'bold')
-    doc.text('CPF:', marginLeft, y)
+    doc.text('CPF:', ml, y)
     doc.setFont('helvetica', 'normal')
-    doc.text(config.usuario.cpf || '_______________', marginLeft + 15, y)
-    doc.line(marginLeft + 15, y + 1, marginLeft + 60, y + 1)
+    doc.text(config.usuario.cpf || '_______________', ml + 13, y)
 
     if (config.usuario.pelotao) {
       doc.setFont('helvetica', 'bold')
-      doc.text('Pelotão:', marginLeft + 65, y)
+      doc.text('Pelotão:', ml + 55, y)
       doc.setFont('helvetica', 'normal')
-      doc.text(config.usuario.pelotao, marginLeft + 88, y)
-      doc.line(marginLeft + 88, y + 1, marginLeft + 130, y + 1)
+      doc.text(config.usuario.pelotao, ml + 75, y)
     }
 
     doc.setFont('helvetica', 'bold')
-    const dataX = config.usuario.pelotao ? marginLeft + 135 : marginLeft + 65
+    const dataX = config.usuario.pelotao ? ml + 120 : ml + 55
     doc.text('Data:', dataX, y)
     doc.setFont('helvetica', 'normal')
-    doc.text(new Date().toLocaleDateString('pt-BR'), dataX + 16, y)
+    doc.text(new Date().toLocaleDateString('pt-BR'), dataX + 14, y)
   } else {
-    // Campos em branco para preencher à mão
-    doc.text('Nome:', marginLeft, y)
+    doc.text('Nome:', ml, y)
     doc.setDrawColor(180, 180, 180)
-    doc.line(marginLeft + 18, y, pageWidth - marginRight, y)
-    y += 7
-    doc.text('Data:', marginLeft, y)
-    doc.line(marginLeft + 16, y, marginLeft + 60, y)
-    doc.text('Nota:', marginLeft + 70, y)
-    doc.line(marginLeft + 84, y, marginLeft + 120, y)
+    doc.line(ml + 16, y, pw - mr, y)
+    y += 6
+    doc.text('Data:', ml, y)
+    doc.line(ml + 14, y, ml + 50, y)
+    doc.text('Nota:', ml + 60, y)
+    doc.line(ml + 74, y, ml + 110, y)
   }
-  
-  y += 10
 
+  y += 7
   doc.setDrawColor(...CORES.azulMedio)
-  doc.setLineWidth(0.5)
-  doc.line(marginLeft, y, pageWidth - marginRight, y)
-  y += 8
+  doc.setLineWidth(0.4)
+  doc.line(ml, y, pw - mr, y)
+  y += 5
 
   // ==========================================
   // QUESTÕES
   // ==========================================
-
   const gabarito: { numero: number; resposta: string; explicacao?: string; materia: string }[] = []
 
   questoes.forEach((questao, index) => {
@@ -203,62 +187,55 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
     const nomeMateria = questao.materia?.nome || ''
     const nomeAssunto = questao.assunto?.nome ? ` > ${questao.assunto.nome}` : ''
 
-    // Estimar altura
-    const textoLimpoEst = limparTextoParaPdf(questao.enunciado)
-    const linhasEnunciado = quebrarTexto(textoLimpoEst, contentWidth - 6)
-    let alturaEstimada = 15 + (linhasEnunciado.length * 5)
-    
+    // Texto limpo
+    const textoLimpo = limparTextoParaPdf(questao.enunciado)
+    const linhasEnunciado = quebrar(textoLimpo, cw - 4)
+
+    // Estimar altura total da questão
+    let altEst = 8 + (linhasEnunciado.length * 4.5)
     if (questao.tipo === 'multipla_escolha' && questao.alternativas) {
       questao.alternativas.forEach(alt => {
-        const linhasAlt = quebrarTexto(alt.texto, contentWidth - 22)
-        alturaEstimada += linhasAlt.length * 5 + 2
+        altEst += quebrar(alt.texto, cw - 22).length * 4.5 + 1
       })
     } else {
-      alturaEstimada += 12
+      altEst += 7
     }
 
-    if (incluirEspacoResposta) alturaEstimada += 5
+    novaPagina(altEst)
 
-    verificarNovaPagina(alturaEstimada)
-
-    // Badge com número
+    // Número + Matéria (numa linha)
     doc.setFillColor(...CORES.azulEscuro)
-    doc.roundedRect(marginLeft, y - 1, 12, 7, 2, 2, 'F')
+    doc.roundedRect(ml, y, 10, 6, 1.5, 1.5, 'F')
     doc.setTextColor(...CORES.branco)
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'bold')
-    doc.text(String(numero), marginLeft + 6, y + 4, { align: 'center' })
-
-    // Matéria
-    doc.setTextColor(...CORES.azulMedio)
     doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.text(String(numero), ml + 5, y + 4, { align: 'center' })
+
+    doc.setTextColor(...CORES.azulMedio)
+    doc.setFontSize(7)
     doc.setFont('helvetica', 'italic')
-    doc.text(`${nomeMateria}${nomeAssunto}`, marginLeft + 15, y + 4)
+    doc.text(`${nomeMateria}${nomeAssunto}`, ml + 13, y + 4)
 
-    y += 10
+    y += 8
 
-    // Enunciado (justificado e compacto)
+    // Enunciado
     doc.setTextColor(...CORES.cinzaEscuro)
-    doc.setFontSize(10)
+    doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
-    
-    const textoLimpo = limparTextoParaPdf(questao.enunciado)
-    const linhasLimpas = quebrarTexto(textoLimpo, contentWidth - 6)
-    
-    linhasLimpas.forEach((linha: string, idx: number) => {
-      verificarNovaPagina(8)
-      // Justificar todas as linhas exceto a última do parágrafo
-      if (idx < linhasLimpas.length - 1) {
-        doc.text(linha, marginLeft + 3, y, { align: 'justify', maxWidth: contentWidth - 6 })
+
+    linhasEnunciado.forEach((linha: string, idx: number) => {
+      novaPagina(6)
+      if (idx < linhasEnunciado.length - 1) {
+        doc.text(linha, ml + 2, y, { align: 'justify', maxWidth: cw - 4 })
       } else {
-        doc.text(linha, marginLeft + 3, y)
+        doc.text(linha, ml + 2, y)
       }
-      y += 5
+      y += 4.5
     })
 
-    y += 3
+    y += 1.5
 
-    // Alternativas ou Certo/Errado
+    // Alternativas
     if (questao.tipo === 'multipla_escolha' && questao.alternativas) {
       const letras = ['A', 'B', 'C', 'D', 'E']
       let respostaCorreta = ''
@@ -267,182 +244,176 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
         const letra = letras[altIndex] || String(altIndex + 1)
         if (alt.correta) respostaCorreta = letra
 
-        const linhasAlt = quebrarTexto(alt.texto, contentWidth - 22)
-        verificarNovaPagina(linhasAlt.length * 5 + 4)
+        const linhasAlt = quebrar(alt.texto, cw - 22)
+        novaPagina(linhasAlt.length * 4.5 + 2)
 
-        // Quadradinho pra marcar
+        // Checkbox
         doc.setDrawColor(180, 180, 180)
-        doc.setLineWidth(0.3)
-        doc.rect(marginLeft + 5, y - 3.5, 4, 4)
+        doc.setLineWidth(0.25)
+        doc.rect(ml + 4, y - 3, 3.5, 3.5)
 
         // Letra
         doc.setTextColor(...CORES.cinzaEscuro)
-        doc.setFontSize(10)
+        doc.setFontSize(9)
         doc.setFont('helvetica', 'bold')
-        doc.text(`${letra})`, marginLeft + 12, y)
+        doc.text(`${letra})`, ml + 10, y)
 
         // Texto
         doc.setFont('helvetica', 'normal')
-        linhasAlt.forEach((linha: string, linhaIdx: number) => {
-          doc.text(linha, marginLeft + 20, y + (linhaIdx * 5))
+        linhasAlt.forEach((linha: string, li: number) => {
+          doc.text(linha, ml + 18, y + (li * 4.5))
         })
 
-        y += (linhasAlt.length * 5) + 2
+        y += (linhasAlt.length * 4.5) + 1
       })
 
       gabarito.push({ numero, resposta: respostaCorreta, explicacao: questao.explicacao, materia: nomeMateria })
-
     } else {
       // Certo/Errado
       const resposta = questao.resposta_certo_errado === true ? 'CERTO' : 'ERRADO'
 
       doc.setDrawColor(180, 180, 180)
-      doc.setLineWidth(0.3)
-      
-      doc.rect(marginLeft + 5, y - 3.5, 4, 4)
+      doc.setLineWidth(0.25)
+
+      doc.rect(ml + 4, y - 3, 3.5, 3.5)
       doc.setTextColor(...CORES.cinzaEscuro)
-      doc.setFontSize(10)
+      doc.setFontSize(9)
       doc.setFont('helvetica', 'bold')
-      doc.text('CERTO', marginLeft + 12, y)
+      doc.text('CERTO', ml + 10, y)
 
-      doc.rect(marginLeft + 40, y - 3.5, 4, 4)
-      doc.text('ERRADO', marginLeft + 47, y)
+      doc.rect(ml + 35, y - 3, 3.5, 3.5)
+      doc.text('ERRADO', ml + 41, y)
 
-      y += 5
+      y += 4
 
       gabarito.push({ numero, resposta, explicacao: questao.explicacao, materia: nomeMateria })
     }
 
-    // Separador
-    y += 5
-    doc.setDrawColor(220, 220, 220)
-    doc.setLineWidth(0.2)
-    doc.line(marginLeft, y, pageWidth - marginRight, y)
-    y += 6
+    // Separador fino
+    y += 2
+    doc.setDrawColor(230, 230, 230)
+    doc.setLineWidth(0.15)
+    doc.line(ml + 5, y, pw - mr - 5, y)
+    y += 3
   })
 
   // ==========================================
   // GABARITO
   // ==========================================
-
   if (incluirGabarito && gabarito.length > 0) {
     doc.addPage()
-    y = 15
+    y = 12
 
     doc.setFillColor(...CORES.azulEscuro)
-    doc.rect(0, 0, pageWidth, 25, 'F')
+    doc.rect(0, 0, pw, 20, 'F')
     doc.setTextColor(...CORES.branco)
-    doc.setFontSize(18)
+    doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
-    doc.text('GABARITO', pageWidth / 2, 16, { align: 'center' })
+    doc.text('GABARITO', pw / 2, 14, { align: 'center' })
 
-    y = 35
+    y = 28
 
-    // Grid de respostas (5 colunas)
-    const colWidth = contentWidth / 5
+    // Grid (5 colunas)
+    const colW = cw / 5
 
     doc.setFillColor(...CORES.cinzaClaro)
-    doc.rect(marginLeft, y - 5, contentWidth, 8, 'F')
+    doc.rect(ml, y - 4, cw, 7, 'F')
     doc.setTextColor(...CORES.cinzaEscuro)
-    doc.setFontSize(8)
+    doc.setFontSize(7)
     doc.setFont('helvetica', 'bold')
 
     for (let col = 0; col < 5; col++) {
-      doc.text('Nº', marginLeft + col * colWidth + 3, y)
-      doc.text('Resp.', marginLeft + col * colWidth + 14, y)
+      doc.text('Nº', ml + col * colW + 3, y)
+      doc.text('Resp.', ml + col * colW + 13, y)
     }
-    y += 5
+    y += 4
 
-    doc.setFontSize(9)
-    const itemsPerCol = Math.ceil(gabarito.length / 5)
+    doc.setFontSize(8)
+    const perCol = Math.ceil(gabarito.length / 5)
 
     gabarito.forEach((item, idx) => {
-      const col = Math.floor(idx / itemsPerCol)
-      const row = idx % itemsPerCol
-      const x = marginLeft + col * colWidth
-      const itemY = y + row * 6
+      const col = Math.floor(idx / perCol)
+      const row = idx % perCol
+      const x = ml + col * colW
+      const iy = y + row * 5
 
-      if (itemY > pageHeight - 25) return
+      if (iy > ph - mbRodape) return
 
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(...CORES.cinzaEscuro)
-      doc.text(String(item.numero).padStart(2, '0'), x + 3, itemY)
+      doc.text(String(item.numero).padStart(2, '0'), x + 3, iy)
 
       doc.setTextColor(...CORES.azulEscuro)
-      doc.text(item.resposta, x + 14, itemY)
+      doc.text(item.resposta, x + 13, iy)
     })
 
-    y += itemsPerCol * 6 + 10
+    y += perCol * 5 + 6
 
-    // ==========================================
-    // EXPLICAÇÕES
-    // ==========================================
-
+    // Explicações
     if (incluirExplicacoes) {
-      verificarNovaPagina(20)
+      novaPagina(15)
 
       doc.setDrawColor(...CORES.azulMedio)
-      doc.setLineWidth(0.5)
-      doc.line(marginLeft, y, pageWidth - marginRight, y)
-      y += 8
+      doc.setLineWidth(0.4)
+      doc.line(ml, y, pw - mr, y)
+      y += 6
 
       doc.setTextColor(...CORES.azulEscuro)
-      doc.setFontSize(14)
+      doc.setFontSize(12)
       doc.setFont('helvetica', 'bold')
-      doc.text('Explicações', marginLeft, y)
-      y += 8
+      doc.text('Explicações', ml, y)
+      y += 6
 
       gabarito.forEach((item) => {
         if (!item.explicacao) return
 
-        const textoExplicacao = limparTextoParaPdf(item.explicacao.replace(/<[^>]*>/g, ''))
-        const linhas = quebrarTexto(textoExplicacao, contentWidth - 15)
-        
-        verificarNovaPagina(linhas.length * 4.5 + 15)
+        const textoExp = limparTextoParaPdf(item.explicacao.replace(/<[^>]*>/g, ''))
+        const linhas = quebrar(textoExp, cw - 12)
+
+        novaPagina(linhas.length * 4 + 10)
 
         // Badge
         doc.setFillColor(...CORES.azulEscuro)
-        doc.roundedRect(marginLeft, y - 1, 10, 6, 1.5, 1.5, 'F')
+        doc.roundedRect(ml, y - 1, 9, 5, 1, 1, 'F')
         doc.setTextColor(...CORES.branco)
-        doc.setFontSize(8)
-        doc.setFont('helvetica', 'bold')
-        doc.text(String(item.numero), marginLeft + 5, y + 3, { align: 'center' })
-
-        // Resposta
-        doc.setTextColor(...CORES.verde)
-        doc.setFontSize(9)
-        doc.text(`Resposta: ${item.resposta}`, marginLeft + 14, y + 3)
-
-        // Matéria
-        doc.setTextColor(...CORES.cinzaMedio)
         doc.setFontSize(7)
-        doc.text(item.materia, pageWidth - marginRight, y + 3, { align: 'right' })
+        doc.setFont('helvetica', 'bold')
+        doc.text(String(item.numero), ml + 4.5, y + 2.5, { align: 'center' })
 
-        y += 8
+        // Resposta + Matéria
+        doc.setTextColor(...CORES.verde)
+        doc.setFontSize(8)
+        doc.text(`Resp: ${item.resposta}`, ml + 12, y + 2.5)
 
-        // Explicação
+        doc.setTextColor(...CORES.cinzaMedio)
+        doc.setFontSize(6)
+        doc.text(item.materia, pw - mr, y + 2.5, { align: 'right' })
+
+        y += 6
+
+        // Texto
         doc.setTextColor(...CORES.cinzaEscuro)
-        doc.setFontSize(8.5)
+        doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
 
         linhas.forEach((linha: string) => {
-          verificarNovaPagina(6)
-          doc.text(linha, marginLeft + 3, y)
-          y += 4.5
+          novaPagina(5)
+          doc.text(linha, ml + 2, y)
+          y += 4
         })
 
-        y += 5
+        y += 3
 
-        doc.setDrawColor(230, 230, 230)
+        doc.setDrawColor(235, 235, 235)
         doc.setLineWidth(0.1)
-        doc.line(marginLeft + 10, y, pageWidth - marginRight - 10, y)
-        y += 4
+        doc.line(ml + 8, y, pw - mr - 8, y)
+        y += 2
       })
     }
   }
 
   // ==========================================
-  // RODAPÉS em todas as páginas (com CPF + aviso)
+  // RODAPÉS (com CPF + aviso)
   // ==========================================
   const totalPages = doc.getNumberOfPages()
   const cpfRodape = config.usuario?.cpf || '___.___.___-__'
@@ -451,30 +422,26 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i)
 
-    // Linha separadora
     doc.setDrawColor(220, 220, 220)
-    doc.setLineWidth(0.2)
-    doc.line(marginLeft, pageHeight - 18, pageWidth - marginRight, pageHeight - 18)
+    doc.setLineWidth(0.15)
+    doc.line(ml, ph - 18, pw - mr, ph - 18)
 
-    // Aviso de proibição
-    doc.setFontSize(6)
+    doc.setFontSize(5.5)
     doc.setTextColor(200, 50, 50)
     doc.setFont('helvetica', 'bold')
     doc.text(
       'DOCUMENTO CONFIDENCIAL — PROIBIDA A REPRODUÇÃO, COMPARTILHAMENTO OU DISTRIBUIÇÃO. USO EXCLUSIVO DO ALUNO IDENTIFICADO ABAIXO.',
-      pageWidth / 2, pageHeight - 14, { align: 'center' }
+      pw / 2, ph - 14, { align: 'center' }
     )
 
-    // Dados do aluno + página
-    doc.setFontSize(7)
+    doc.setFontSize(6.5)
     doc.setTextColor(...CORES.cinzaMedio)
     doc.setFont('helvetica', 'normal')
-    doc.text(`CPF: ${cpfRodape}${nomeRodape ? ' | ' + nomeRodape : ''}`, marginLeft, pageHeight - 8)
-    doc.text(`Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' })
-    doc.text(new Date().toLocaleDateString('pt-BR'), pageWidth - marginRight, pageHeight - 8, { align: 'right' })
+    doc.text(`CPF: ${cpfRodape}${nomeRodape ? ' | ' + nomeRodape : ''}`, ml, ph - 9)
+    doc.text(`Página ${i} de ${totalPages}`, pw / 2, ph - 9, { align: 'center' })
+    doc.text(new Date().toLocaleDateString('pt-BR'), pw - mr, ph - 9, { align: 'right' })
   }
 
-  // Salvar
   const nomeArquivo = `simulado-cfp-pmdf-${new Date().toISOString().slice(0, 10)}.pdf`
   doc.save(nomeArquivo)
   return nomeArquivo

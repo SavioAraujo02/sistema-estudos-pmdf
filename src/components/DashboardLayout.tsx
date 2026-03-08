@@ -8,6 +8,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { Notificacoes } from './Notificacoes'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { CpfObrigatorio } from './CpfObrigatorio'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -100,6 +101,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           {children}
         </main>
       </div>
+
+      <CpfObrigatorio />
     </div>
   )
 }

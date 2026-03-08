@@ -442,15 +442,35 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
   }
 
   // ==========================================
-  // RODAPÉS em todas as páginas
+  // RODAPÉS em todas as páginas (com CPF + aviso)
   // ==========================================
   const totalPages = doc.getNumberOfPages()
+  const cpfRodape = config.usuario?.cpf || '___.___.___-__'
+  const nomeRodape = config.usuario?.nome || ''
+
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i)
-    doc.setFontSize(8)
+
+    // Linha separadora
+    doc.setDrawColor(220, 220, 220)
+    doc.setLineWidth(0.2)
+    doc.line(marginLeft, pageHeight - 18, pageWidth - marginRight, pageHeight - 18)
+
+    // Aviso de proibição
+    doc.setFontSize(6)
+    doc.setTextColor(200, 50, 50)
+    doc.setFont('helvetica', 'bold')
+    doc.text(
+      'DOCUMENTO CONFIDENCIAL — PROIBIDA A REPRODUÇÃO, COMPARTILHAMENTO OU DISTRIBUIÇÃO. USO EXCLUSIVO DO ALUNO IDENTIFICADO ABAIXO.',
+      pageWidth / 2, pageHeight - 14, { align: 'center' }
+    )
+
+    // Dados do aluno + página
+    doc.setFontSize(7)
     doc.setTextColor(...CORES.cinzaMedio)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`CPF: ${cpfRodape}${nomeRodape ? ' | ' + nomeRodape : ''}`, marginLeft, pageHeight - 8)
     doc.text(`Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' })
-    doc.text('Sistema de Estudos CFP - PMDF', marginLeft, pageHeight - 8)
     doc.text(new Date().toLocaleDateString('pt-BR'), pageWidth - marginRight, pageHeight - 8, { align: 'right' })
   }
 

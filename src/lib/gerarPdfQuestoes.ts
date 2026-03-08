@@ -12,6 +12,7 @@ interface ConfigPdf {
     nome: string
     cpf?: string
     pelotao?: string
+    matricula?: string
   }
 }
 
@@ -437,7 +438,8 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
     doc.setFontSize(6.5)
     doc.setTextColor(...CORES.cinzaMedio)
     doc.setFont('helvetica', 'normal')
-    doc.text(`CPF: ${cpfRodape}${nomeRodape ? ' | ' + nomeRodape : ''}`, ml, ph - 9)
+    const matriculaRodape = config.usuario?.matricula || ''
+    doc.text(`CPF: ${cpfRodape}${matriculaRodape ? ' | Mat: ' + matriculaRodape : ''}${nomeRodape ? ' | ' + nomeRodape : ''}`, ml, ph - 9)
     doc.text(`Página ${i} de ${totalPages}`, pw / 2, ph - 9, { align: 'center' })
     doc.text(new Date().toLocaleDateString('pt-BR'), pw - mr, ph - 9, { align: 'right' })
   }

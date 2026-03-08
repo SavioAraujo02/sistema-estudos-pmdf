@@ -405,12 +405,12 @@ export default function EstudarPage() {
 
       // Buscar dados do usuário logado
       const { data: { user: authUser } } = await supabase.auth.getUser()
-      let dadosUsuario: { nome: string; cpf?: string; pelotao?: string } | undefined
+      let dadosUsuario: { nome: string; cpf?: string; pelotao?: string; matricula?: string } | undefined
 
       if (authUser) {
         const { data: perfil } = await supabase
           .from('usuarios')
-          .select('nome_completo, nome, cpf, pelotao')
+          .select('nome_completo, nome, cpf, pelotao, matricula')
           .eq('id', authUser.id)
           .single()
 
@@ -418,7 +418,8 @@ export default function EstudarPage() {
           dadosUsuario = {
             nome: perfil.nome_completo || perfil.nome || '',
             cpf: perfil.cpf || undefined,
-            pelotao: perfil.pelotao || undefined
+            pelotao: perfil.pelotao || undefined,
+            matricula: perfil.matricula || undefined
           }
         }
       }

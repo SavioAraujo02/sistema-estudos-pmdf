@@ -39,7 +39,8 @@ interface ConfiguracaoSessao {
   materiasSelecionadas?: string[]
   assuntoIds: string[]
   numeroQuestoes: number | 'todas'
-  modoEstudo: 'normal' | 'revisao' | 'rapido'
+  modoEstudo: 'normal' | 'revisao' | 'rapido' | 'simulado'
+  tempoLimiteMinutos?: number
   salvarHistorico: boolean
   dificuldade?: 'facil' | 'medio' | 'dificil'
   anoProva?: number
@@ -101,7 +102,8 @@ export default function EstudarPage() {
   useEffect(() => {
     setConfiguracao(prev => ({
       ...prev,
-      salvarHistorico: prev.modoEstudo !== 'rapido'
+      salvarHistorico: prev.modoEstudo !== 'rapido',
+      tempoLimiteMinutos: prev.modoEstudo === 'simulado' ? (prev.tempoLimiteMinutos || 60) : undefined
     }))
   }, [configuracao.modoEstudo])
 
@@ -651,9 +653,10 @@ export default function EstudarPage() {
 
   const getModoEstudoInfo = (modo: string) => {
     const modos = {
-      'normal': { nome: 'Normal', desc: 'Estudo completo com histórico', icon: '📚', cor: 'blue' },
-      'revisao': { nome: 'Revisão', desc: 'Questões que você errou', icon: '🔄', cor: 'orange' },
-      'rapido': { nome: 'Rápido', desc: 'Sem salvar histórico', icon: '⚡', cor: 'yellow' }
+      'normal': { nome: 'Normal', desc: 'Estudo com feedback', icon: '📚', cor: 'blue' },
+      'revisao': { nome: 'Revisão', desc: 'Questões que errou', icon: '🔄', cor: 'orange' },
+      'rapido': { nome: 'Rápido', desc: 'Sem salvar histórico', icon: '⚡', cor: 'yellow' },
+      'simulado': { nome: 'Simulado', desc: 'Prova real com tempo', icon: '🎯', cor: 'red' }
     }
     
     return modos[modo as keyof typeof modos] || modos['normal']
@@ -984,8 +987,8 @@ export default function EstudarPage() {
                 </h3>
               </div>
               <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6">
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {(['normal', 'revisao', 'rapido'] as const).map((m) => {
+              <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              {(['normal', 'revisao', 'rapido', 'simulado'] as const).map((m) => {
                     const info = getModoEstudoInfo(m)
                     const selecionado = configuracao.modoEstudo === m
                     return (
@@ -1014,6 +1017,48 @@ export default function EstudarPage() {
                     )
                   })}
                 </div>
+                {/* Configuração de tempo para Simulado */}
+                {configuracao.modoEstudo === 'simulado' && (
+                  <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                    <label className="block text-xs font-semibold text-red-800 dark:text-red-300 mb-2">
+                      ⏱️ Tempo limite do simulado
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[30, 60, 90, 120].map((min) => (
+                        <button
+                          key={min}
+                          onClick={() => setConfiguracao({...configuracao, tempoLimiteMinutos: min})}
+                          className={`py-2 rounded-lg text-sm font-semibold transition-all active:scale-[0.97] min-h-[40px] ${
+                            configuracao.tempoLimiteMinutos === min
+                              ? 'bg-red-600 text-white'
+                              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                          }`}
+                        >
+                          {min >= 60 ? `${min / 60}h` : `${min}min`}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-red-700 dark:text-red-400">Outro:</span>
+                      <input
+                        type="number"
+                        min="5"
+                        max="300"
+                        value={configuracao.tempoLimiteMinutos && ![30, 60, 90, 120].includes(configuracao.tempoLimiteMinutos) ? configuracao.tempoLimiteMinutos : ''}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value)
+                          if (v > 0) setConfiguracao({...configuracao, tempoLimiteMinutos: v})
+                        }}
+                        placeholder="min"
+                        className="w-20 px-3 py-1.5 border border-red-200 dark:border-red-700 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      />
+                      <span className="text-xs text-red-600 dark:text-red-400">minutos</span>
+                    </div>
+                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-2">
+                      Respostas só serão reveladas no final. Quando o tempo acabar, o simulado finaliza automaticamente.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

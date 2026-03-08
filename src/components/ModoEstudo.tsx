@@ -26,8 +26,9 @@ interface ModoEstudoProps {
     materiasSelecionadas?: string[]
     assuntoIds: string[]
     numeroQuestoes: number | 'todas'
-    modoEstudo: 'normal' | 'revisao' | 'rapido' | 'aleatorio'
+    modoEstudo: 'normal' | 'revisao' | 'rapido' | 'aleatorio' | 'simulado'
     salvarHistorico: boolean
+    tempoLimiteMinutos?: number
   }
   isAdmin?: boolean
   restaurarSessao?: boolean
@@ -67,6 +68,10 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   // Estados dos comentários e reports
   const [mostrarComentarios, setMostrarComentarios] = useState(false)
   const [mostrarReport, setMostrarReport] = useState(false)
+  // Simulado
+  const isSimulado = configuracao?.modoEstudo === 'simulado'
+  const [tempoRestante, setTempoRestante] = useState<number | null>(null)
+  const [simuladoFinalizado, setSimuladoFinalizado] = useState(false)
   const [alternativasEliminadas, setAlternativasEliminadas] = useState<string[]>([])
 
   useEffect(() => {
@@ -180,6 +185,52 @@ useEffect(() => {
 }, [questoes.length]) // Usar tamanho do array como dependência
 
 
+  // Cronômetro regressivo do simulado
+  useEffect(() => {
+    if (!isSimulado || !configuracao?.tempoLimiteMinutos) return
+
+    const tempoTotalSeg = configuracao.tempoLimiteMinutos * 60
+    setTempoRestante(tempoTotalSeg)
+
+    const interval = setInterval(() => {
+      setTempoRestante(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval)
+          // Tempo esgotado — finalizar automaticamente
+          setSimuladoFinalizado(true)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isSimulado, configuracao?.tempoLimiteMinutos])
+
+  // Finalizar quando tempo acabar
+  useEffect(() => {
+    if (!simuladoFinalizado) return
+
+    timerSessao.pausar()
+    timerQuestao.pausar()
+
+    const tempoTotal = timerSessao.tempo
+    const acertos = respostas.filter(r => r.correta).length
+
+    const resultados: ResultadoSessao = {
+      totalQuestoes: questoes.length,
+      acertos,
+      erros: questoes.length - acertos,
+      percentual: Math.round((acertos / questoes.length) * 100),
+      tempo: tempoTotal,
+      respostas
+    }
+
+    finalizarSessao(resultados).catch(console.error)
+    onFinalizar(resultados)
+  }, [simuladoFinalizado])
+
+
   // Carregar alternativas eliminadas quando mudar de questão
   useEffect(() => {
     const questao = questoes[questaoAtual]
@@ -261,7 +312,45 @@ useEffect(() => {
   
     const novasRespostas = [...respostas, novaResposta]
     setRespostas(novasRespostas)
-    setMostrarResposta(true)
+    // No simulado, não mostra resposta — avança direto
+    if (isSimulado) {
+      setMostrarResposta(false)
+      
+      // Avançar automaticamente para próxima questão
+      if (isUltimaQuestao) {
+        // Finalizar
+        timerSessao.pausar()
+        timerQuestao.pausar()
+        
+        const tempoTotal = timerSessao.tempo
+        const todasRespostas = [...novasRespostas]
+        const totalAcertos = todasRespostas.filter(r => r.correta).length
+
+        const resultados: ResultadoSessao = {
+          totalQuestoes: questoes.length,
+          acertos: totalAcertos,
+          erros: questoes.length - totalAcertos,
+          percentual: Math.round((totalAcertos / questoes.length) * 100),
+          tempo: tempoTotal,
+          respostas: todasRespostas
+        }
+
+        finalizarSessao(resultados).catch(console.error)
+        onFinalizar(resultados)
+      } else {
+        // Próxima questão
+        const novoIndice = questaoAtual + 1
+        atualizarQuestaoAtual(novoIndice)
+        setQuestaoAtual(novoIndice)
+        setRespostaSelecionada(null)
+        setMostrarComentarios(false)
+        setMostrarReport(false)
+        setAlternativasEliminadas([])
+        resetarTempoQuestao()
+      }
+    } else {
+      setMostrarResposta(true)
+    }
   
     // Salvar no banco conforme configuração
     if (configuracao?.salvarHistorico === true) {
@@ -492,6 +581,19 @@ useEffect(() => {
               <span>{questao.materia.nome}</span>
             </div>
           </div>
+
+          {/* Cronômetro regressivo do simulado */}
+          {isSimulado && tempoRestante !== null && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-sm font-bold ${
+                tempoRestante <= 60
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 animate-pulse'
+                  : tempoRestante <= 300
+                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                    : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+              }`}>
+                ⏱️ {Math.floor(tempoRestante / 60)}:{(tempoRestante % 60).toString().padStart(2, '0')}
+              </div>
+            )}
           
                     {/* Cronômetros */}
                     <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
@@ -791,10 +893,21 @@ useEffect(() => {
               <button
                 onClick={verificarResposta}
                 disabled={respostaSelecionada === null}
-                className="flex-1 px-4 sm:px-6 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
+                className={`flex-1 px-4 sm:px-6 py-2 sm:py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base ${
+                  isSimulado ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
-                <span className="hidden sm:inline">Confirmar Resposta</span>
-                <span className="sm:hidden">Confirmar</span>
+                {isSimulado ? (
+                  <>
+                    <span className="hidden sm:inline">{isUltimaQuestao ? 'Finalizar Simulado' : 'Confirmar e Avançar'}</span>
+                    <span className="sm:hidden">{isUltimaQuestao ? 'Finalizar' : 'Confirmar'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Confirmar Resposta</span>
+                    <span className="sm:hidden">Confirmar</span>
+                  </>
+                )}
               </button>
               
               <button
@@ -832,18 +945,18 @@ useEffect(() => {
         </div>
         </div>
 
-        {/* Comentários e Reports - AGORA ABAIXO DA QUESTÃO */}
-        <ComentariosInline
+        {/* Comentários e Reports - não aparece no simulado */}
+        {!isSimulado && <ComentariosInline
           questaoId={questao.id}
           isOpen={mostrarComentarios}
           onToggle={() => setMostrarComentarios(!mostrarComentarios)}
-        />
+          />}
 
-          <ReportarErro
+          {!isSimulado && <ReportarErro
           questaoId={questao.id}
           isOpen={mostrarReport}
           onToggle={() => setMostrarReport(!mostrarReport)}
-        />
+          />}
       </div>
     </div>
   )

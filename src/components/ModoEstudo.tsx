@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw, Clock, Target, Timer, X, RotateCw } from 'lucide-react'
+import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw, Clock, Target, Timer, X, RotateCw, MessageCircle, Flag, ChevronUp, Sparkles } from 'lucide-react'
 import { QuestaoEstudo, salvarResposta } from '@/lib/estudo'
 import { 
   getRespostaCorretaCertoErrado, 
@@ -61,32 +61,30 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const [tempoInicio, setTempoInicio] = useState(Date.now())
   const [tempoQuestao, setTempoQuestao] = useState(Date.now())
   
-  // Timer inteligente
   const timerSessao = useTimerInteligente()
   const timerQuestao = useTimerInteligente()
 
-  // Estados dos comentários e reports
   const [mostrarComentarios, setMostrarComentarios] = useState(false)
   const [mostrarReport, setMostrarReport] = useState(false)
-  // Simulado
+  const [mostrarExplicacaoModal, setMostrarExplicacaoModal] = useState(false)
+
   const isSimulado = configuracao?.modoEstudo === 'simulado'
   const [tempoRestante, setTempoRestante] = useState<number | null>(null)
   const [simuladoFinalizado, setSimuladoFinalizado] = useState(false)
   const [alternativasEliminadas, setAlternativasEliminadas] = useState<string[]>([])
 
+  // ==========================================
+  // TODA A LÓGICA (INALTERADA)
+  // ==========================================
+
   useEffect(() => {
-    // Verificar se há dados de restauração
     const dadosRestauracao = localStorage.getItem('sessao_restauracao')
     
     if (dadosRestauracao) {
       try {
         const dados = JSON.parse(dadosRestauracao)
-        console.log('🔄 Restaurando estado da sessão:', dados)
-        
-        // Restaurar questão atual
         setQuestaoAtual(dados.questaoAtual || 0)
         
-        // Restaurar respostas anteriores
         if (dados.respostasAnteriores && dados.respostasAnteriores.length > 0) {
           const respostasFormatadas = dados.respostasAnteriores.map((resp: any) => ({
             questao: questoes.find(q => q.id === resp.questao_id) || questoes[0],
@@ -97,7 +95,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
           
           setRespostas(respostasFormatadas)
           
-          // Marcar questões como respondidas
           const questoesRespondidasMap = new Map()
           dados.respostasAnteriores.forEach((resp: any, index: number) => {
             questoesRespondidasMap.set(index, {
@@ -107,20 +104,15 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
             })
           })
           setQuestoesRespondidas(questoesRespondidasMap)
-          
-          console.log('✅ Respostas restauradas:', respostasFormatadas.length)
         }
         
-        // Restaurar timers com tempo original
         if (dados.tempoInicio) {
           timerSessao.iniciar(dados.tempoInicio)
         } else {
           timerSessao.iniciar()
         }
         
-        // Limpar dados de restauração
         localStorage.removeItem('sessao_restauracao')
-        
       } catch (error) {
         console.error('Erro ao restaurar sessão:', error)
         timerSessao.iniciar()
@@ -129,63 +121,49 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
       timerSessao.iniciar()
     }
     
-    // Iniciar timer da questão
     timerQuestao.iniciar()
     setTempoInicio(Date.now())
     setTempoQuestao(Date.now())
-    
-  }, []) // Manter dependência vazia
+  }, [])
 
-  // useEffect separado para restauração quando questões mudarem
-useEffect(() => {
-  if (questoes.length === 0) return
-  
-  const dadosRestauracao = localStorage.getItem('sessao_restauracao')
-  
-  if (dadosRestauracao) {
-    try {
-      const dados = JSON.parse(dadosRestauracao)
-      console.log('🔄 Restaurando estado da sessão:', dados)
-      
-      // Restaurar questão atual
-      setQuestaoAtual(dados.questaoAtual || 0)
-      
-      // Restaurar respostas anteriores
-      if (dados.respostasAnteriores && dados.respostasAnteriores.length > 0) {
-        const respostasFormatadas = dados.respostasAnteriores.map((resp: any) => ({
-          questao: questoes.find(q => q.id === resp.questao_id) || questoes[0],
-          resposta: resp.resposta_usuario,
-          correta: resp.acertou,
-          tempo: resp.tempo_resposta
-        }))
+  useEffect(() => {
+    if (questoes.length === 0) return
+    
+    const dadosRestauracao = localStorage.getItem('sessao_restauracao')
+    
+    if (dadosRestauracao) {
+      try {
+        const dados = JSON.parse(dadosRestauracao)
+        setQuestaoAtual(dados.questaoAtual || 0)
         
-        setRespostas(respostasFormatadas)
-        
-        // Marcar questões como respondidas
-        const questoesRespondidasMap = new Map()
-        dados.respostasAnteriores.forEach((resp: any, index: number) => {
-          questoesRespondidasMap.set(index, {
+        if (dados.respostasAnteriores && dados.respostasAnteriores.length > 0) {
+          const respostasFormatadas = dados.respostasAnteriores.map((resp: any) => ({
+            questao: questoes.find(q => q.id === resp.questao_id) || questoes[0],
             resposta: resp.resposta_usuario,
             correta: resp.acertou,
-            mostrarResposta: true
+            tempo: resp.tempo_resposta
+          }))
+          
+          setRespostas(respostasFormatadas)
+          
+          const questoesRespondidasMap = new Map()
+          dados.respostasAnteriores.forEach((resp: any, index: number) => {
+            questoesRespondidasMap.set(index, {
+              resposta: resp.resposta_usuario,
+              correta: resp.acertou,
+              mostrarResposta: true
+            })
           })
-        })
-        setQuestoesRespondidas(questoesRespondidasMap)
+          setQuestoesRespondidas(questoesRespondidasMap)
+        }
         
-        console.log('✅ Respostas restauradas:', respostasFormatadas.length)
+        localStorage.removeItem('sessao_restauracao')
+      } catch (error) {
+        console.error('Erro ao restaurar sessão:', error)
       }
-      
-      // Limpar dados de restauração
-      localStorage.removeItem('sessao_restauracao')
-      
-    } catch (error) {
-      console.error('Erro ao restaurar sessão:', error)
     }
-  }
-}, [questoes.length]) // Usar tamanho do array como dependência
+  }, [questoes.length])
 
-
-  // Cronômetro regressivo do simulado
   useEffect(() => {
     if (!isSimulado || !configuracao?.tempoLimiteMinutos) return
 
@@ -196,7 +174,6 @@ useEffect(() => {
       setTempoRestante(prev => {
         if (prev === null || prev <= 1) {
           clearInterval(interval)
-          // Tempo esgotado — finalizar automaticamente
           setSimuladoFinalizado(true)
           return 0
         }
@@ -207,7 +184,6 @@ useEffect(() => {
     return () => clearInterval(interval)
   }, [isSimulado, configuracao?.tempoLimiteMinutos])
 
-  // Finalizar quando tempo acabar
   useEffect(() => {
     if (!simuladoFinalizado) return
 
@@ -230,8 +206,6 @@ useEffect(() => {
     onFinalizar(resultados)
   }, [simuladoFinalizado])
 
-
-  // Carregar alternativas eliminadas quando mudar de questão
   useEffect(() => {
     const questao = questoes[questaoAtual]
     if (questao && questao.tipo === 'multipla_escolha') {
@@ -253,19 +227,15 @@ useEffect(() => {
   const questao = questoes[questaoAtual]
   const isUltimaQuestao = questaoAtual === questoes.length - 1
 
-  // Função para salvar tempo de resposta
   const salvarTempoResposta = async (questaoId: string, tempoSegundos: number) => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
-      await supabase
-        .from('tempo_respostas')
-        .insert({
-          questao_id: questaoId,
-          usuario_id: user.id,
-          tempo_segundos: Math.round(tempoSegundos / 1000)
-        })
+      await supabase.from('tempo_respostas').insert({
+        questao_id: questaoId,
+        usuario_id: user.id,
+        tempo_segundos: Math.round(tempoSegundos / 1000)
+      })
     } catch (error) {
       console.error('Erro ao salvar tempo de resposta:', error)
     }
@@ -279,23 +249,15 @@ useEffect(() => {
     let respostaDetectada = true
   
     if (questao.tipo === 'certo_errado') {
-      // MELHORADO: Usar o campo resposta_certo_errado diretamente
       if (questao.resposta_certo_errado !== null && questao.resposta_certo_errado !== undefined) {
         correta = respostaSelecionada === questao.resposta_certo_errado
-        console.log('✅ Usando resposta salva no banco:', questao.resposta_certo_errado ? 'CERTO' : 'ERRADO')
       } else {
-        // Fallback para questões antigas sem resposta definida
-        console.log('⚠️ Questão sem resposta definida - usando fallback')
         respostaDetectada = false
-        
         const respostaCorreta = await getRespostaCorretaCertoErrado(questao.id)
         if (respostaCorreta !== null) {
           correta = respostaSelecionada === respostaCorreta
-          console.log('🔍 Resposta detectada pelo fallback:', respostaCorreta ? 'CERTO' : 'ERRADO')
         } else {
-          // Se não conseguir detectar, considerar como acerto (para não penalizar)
           correta = true
-          console.warn('❌ Não foi possível detectar a resposta correta para a questão:', questao.id)
         }
       }
     } else {
@@ -303,42 +265,27 @@ useEffect(() => {
       correta = respostaSelecionada === alternativaCorreta?.id
     }
   
-    const novaResposta = {
-      questao,
-      resposta: respostaSelecionada,
-      correta,
-      tempo: tempoResposta
-    }
-  
+    const novaResposta = { questao, resposta: respostaSelecionada, correta, tempo: tempoResposta }
     const novasRespostas = [...respostas, novaResposta]
     setRespostas(novasRespostas)
-    // No simulado, não mostra resposta — avança direto
+
     if (isSimulado) {
       setMostrarResposta(false)
       
-      // Avançar automaticamente para próxima questão
       if (isUltimaQuestao) {
-        // Finalizar
         timerSessao.pausar()
         timerQuestao.pausar()
-        
         const tempoTotal = timerSessao.tempo
-        const todasRespostas = [...novasRespostas]
-        const totalAcertos = todasRespostas.filter(r => r.correta).length
-
+        const totalAcertos = novasRespostas.filter(r => r.correta).length
         const resultados: ResultadoSessao = {
-          totalQuestoes: questoes.length,
-          acertos: totalAcertos,
+          totalQuestoes: questoes.length, acertos: totalAcertos,
           erros: questoes.length - totalAcertos,
           percentual: Math.round((totalAcertos / questoes.length) * 100),
-          tempo: tempoTotal,
-          respostas: todasRespostas
+          tempo: tempoTotal, respostas: novasRespostas
         }
-
         finalizarSessao(resultados).catch(console.error)
         onFinalizar(resultados)
       } else {
-        // Próxima questão
         const novoIndice = questaoAtual + 1
         atualizarQuestaoAtual(novoIndice)
         setQuestaoAtual(novoIndice)
@@ -352,42 +299,21 @@ useEffect(() => {
       setMostrarResposta(true)
     }
   
-    // Salvar no banco conforme configuração
     if (configuracao?.salvarHistorico === true) {
-      console.log('🔄 Salvando resposta no histórico...')
-      const salvou = await salvarResposta(questao.id, correta)
-      console.log('✅ Resposta salva:', salvou)
-      
-      // Salvar tempo de resposta
+      await salvarResposta(questao.id, correta)
       await salvarTempoResposta(questao.id, tempoResposta)
-    } else {
-      console.log('⚡ Modo rápido: resposta não salva no histórico')
     }
   
-    // SEMPRE salvar progresso da sessão (independente do modo)
-    console.log('💾 Salvando progresso da sessão...')
     await adicionarRespostaProgresso({
-      questao_id: questao.id,
-      resposta_usuario: respostaSelecionada,
-      tempo_resposta: tempoResposta,
-      acertou: correta,
-      timestamp: new Date().toISOString()
+      questao_id: questao.id, resposta_usuario: respostaSelecionada,
+      tempo_resposta: tempoResposta, acertou: correta, timestamp: new Date().toISOString()
     })
   
-     // PARAR cronômetro da questão após responder
-     timerQuestao.pausar()
+    timerQuestao.pausar()
     
-    // Salvar estado da questão respondida
     setQuestoesRespondidas(prev => new Map(prev.set(questaoAtual, {
-      resposta: respostaSelecionada,
-      correta,
-      mostrarResposta: true
+      resposta: respostaSelecionada, correta, mostrarResposta: true
     })))
-  
-    // NOVO: Mostrar alerta se a resposta não foi detectada automaticamente
-    if (!respostaDetectada && questao.tipo === 'certo_errado') {
-      console.log('⚠️ Esta questão não tinha resposta definida - pode precisar de revisão')
-    }
   }
 
   const resetarTempoQuestao = () => {
@@ -399,13 +325,8 @@ useEffect(() => {
   const voltarQuestao = () => {
     if (questaoAtual > 0) {
       const novoIndice = questaoAtual - 1
-      
-      // Atualizar questão atual no progresso
       atualizarQuestaoAtual(novoIndice)
-      
       setQuestaoAtual(novoIndice)
-      
-      // Restaurar estado da questão se já foi respondida
       const estadoQuestao = questoesRespondidas.get(novoIndice)
       if (estadoQuestao) {
         setRespostaSelecionada(estadoQuestao.resposta)
@@ -414,9 +335,9 @@ useEffect(() => {
         setRespostaSelecionada(null)
         setMostrarResposta(false)
       }
-      
       setMostrarComentarios(false)
       setMostrarReport(false)
+      setMostrarExplicacaoModal(false)
       setAlternativasEliminadas([])
       resetarTempoQuestao()
     }
@@ -425,13 +346,8 @@ useEffect(() => {
   const avancarQuestao = () => {
     if (questaoAtual < questoes.length - 1) {
       const novoIndice = questaoAtual + 1
-      
-      // Atualizar questão atual no progresso
       atualizarQuestaoAtual(novoIndice)
-      
       setQuestaoAtual(novoIndice)
-      
-      // Restaurar estado da questão se já foi respondida
       const estadoQuestao = questoesRespondidas.get(novoIndice)
       if (estadoQuestao) {
         setRespostaSelecionada(estadoQuestao.resposta)
@@ -440,9 +356,9 @@ useEffect(() => {
         setRespostaSelecionada(null)
         setMostrarResposta(false)
       }
-      
       setMostrarComentarios(false)
       setMostrarReport(false)
+      setMostrarExplicacaoModal(false)
       setAlternativasEliminadas([])
       resetarTempoQuestao()
     }
@@ -450,43 +366,24 @@ useEffect(() => {
 
   const pularQuestao = () => {
     if (questaoAtual < questoes.length - 1) {
-      const novaResposta = {
-        questao,
-        resposta: null,
-        correta: false,
-        tempo: Date.now() - tempoQuestao
-      }
-      setRespostas([...respostas, novaResposta])
+      setRespostas([...respostas, { questao, resposta: null, correta: false, tempo: Date.now() - tempoQuestao }])
       avancarQuestao()
     }
   }
 
   const proximaQuestao = () => {
     if (isUltimaQuestao) {
-      // Parar timers
       timerSessao.pausar()
       timerQuestao.pausar()
-      
       const tempoTotal = timerSessao.tempo
       const todasRespostas = mostrarResposta ? respostas : [...respostas]
       const acertos = todasRespostas.filter(r => r.correta).length
-      
       const resultados: ResultadoSessao = {
-        totalQuestoes: questoes.length,
-        acertos,
-        erros: questoes.length - acertos,
+        totalQuestoes: questoes.length, acertos, erros: questoes.length - acertos,
         percentual: Math.round((acertos / questoes.length) * 100),
-        tempo: tempoTotal,
-        respostas: todasRespostas
+        tempo: tempoTotal, respostas: todasRespostas
       }
-
-      // NOVO: Salvar histórico antes de finalizar
-      finalizarSessao(resultados).then(() => {
-        console.log('✅ Histórico salvo com sucesso')
-      }).catch(error => {
-        console.error('Erro ao salvar histórico:', error)
-      })
-
+      finalizarSessao(resultados).catch(console.error)
       onFinalizar(resultados)
     } else {
       avancarQuestao()
@@ -494,43 +391,31 @@ useEffect(() => {
   }
 
   const reiniciarSessao = () => {
-    // Resetar estados
     setQuestaoAtual(0)
     setRespostaSelecionada(null)
     setMostrarResposta(false)
     setMostrarComentarios(false)
     setMostrarReport(false)
+    setMostrarExplicacaoModal(false)
     setRespostas([])
     setQuestoesRespondidas(new Map())
     setAlternativasEliminadas([])
-    
-    // Reiniciar timers
-    timerSessao.resetar()
-    timerQuestao.resetar()
-    timerSessao.iniciar()
-    timerQuestao.iniciar()
-    
+    timerSessao.resetar(); timerQuestao.resetar()
+    timerSessao.iniciar(); timerQuestao.iniciar()
     const agora = Date.now()
-    setTempoInicio(agora)
-    setTempoQuestao(agora)
+    setTempoInicio(agora); setTempoQuestao(agora)
   }
 
   const toggleEliminarAlternativa = async (alternativaId: string) => {
     if (!questao || mostrarResposta) return
-    
     const jaEliminada = alternativasEliminadas.includes(alternativaId)
-    
     try {
       if (jaEliminada) {
         const sucesso = await restaurarAlternativa(questao.id, alternativaId)
-        if (sucesso) {
-          setAlternativasEliminadas(prev => prev.filter(id => id !== alternativaId))
-        }
+        if (sucesso) setAlternativasEliminadas(prev => prev.filter(id => id !== alternativaId))
       } else {
         const sucesso = await eliminarAlternativa(questao.id, alternativaId)
-        if (sucesso) {
-          setAlternativasEliminadas(prev => [...prev, alternativaId])
-        }
+        if (sucesso) setAlternativasEliminadas(prev => [...prev, alternativaId])
       }
     } catch (error) {
       console.error('Erro ao eliminar/restaurar alternativa:', error)
@@ -539,424 +424,391 @@ useEffect(() => {
 
   const limparTodasEliminacoes = async () => {
     if (!questao) return
-    
     try {
       const sucesso = await limparAlternativasEliminadas(questao.id)
-      if (sucesso) {
-        setAlternativasEliminadas([])
-      }
+      if (sucesso) setAlternativasEliminadas([])
     } catch (error) {
       console.error('Erro ao limpar eliminações:', error)
     }
   }
 
+  // ==========================================
+  // RENDER
+  // ==========================================
+
   if (!questao) {
     return (
       <div className="text-center py-12">
-        <div className="text-6xl mb-4">📚</div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-          Nenhuma questão disponível
-        </h3>
-        <p className="text-gray-600 dark:text-gray-400">
-          Cadastre algumas questões para começar a estudar.
-        </p>
+        <div className="text-5xl mb-3">📚</div>
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">Nenhuma questão disponível</h3>
+        <p className="text-sm text-gray-500">Cadastre questões para começar.</p>
       </div>
     )
   }
 
+  const acertosAteAgora = respostas.filter(r => r.correta).length
+
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Header com cronômetro */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-blue-600" />
-              <span className="font-medium text-gray-900 dark:text-white">
-              {`Questão ${questaoAtual + 1} de ${questoes.length}`}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Clock className="h-4 w-4" />
-              <span>{questao.materia.nome}</span>
-            </div>
+    <div className="max-w-2xl mx-auto pb-24 sm:pb-6 space-y-3 px-1">
+
+      {/* ============================== */}
+      {/* HEADER COMPACTO */}
+      {/* ============================== */}
+      <div className={`rounded-2xl p-3 sm:p-4 text-white relative overflow-hidden ${
+        isSimulado
+          ? 'bg-gradient-to-r from-red-500 to-rose-600'
+          : 'bg-gradient-to-r from-blue-600 to-cyan-600'
+      }`}>
+        {/* Linha 1: Progresso + Timers */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm sm:text-base font-bold">
+              Q {questaoAtual + 1}/{questoes.length}
+            </span>
+            <span className="text-xs opacity-70 hidden sm:inline">·</span>
+            <span className="text-xs opacity-70 truncate max-w-[100px] sm:max-w-[200px] hidden sm:inline">
+              {questao.materia.nome}
+            </span>
           </div>
 
-          {/* Cronômetro regressivo do simulado */}
-          {isSimulado && tempoRestante !== null && (
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-sm font-bold ${
-                tempoRestante <= 60
-                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 animate-pulse'
-                  : tempoRestante <= 300
-                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-                    : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+          <div className="flex items-center gap-2">
+            {/* Cronômetro regressivo (simulado) */}
+            {isSimulado && tempoRestante !== null && (
+              <span className={`px-2 py-0.5 rounded-lg font-mono text-xs sm:text-sm font-bold ${
+                tempoRestante <= 60 ? 'bg-white/30 animate-pulse' :
+                tempoRestante <= 300 ? 'bg-white/20' : 'bg-white/15'
               }`}>
                 ⏱️ {Math.floor(tempoRestante / 60)}:{(tempoRestante % 60).toString().padStart(2, '0')}
-              </div>
+              </span>
             )}
-          
-                    {/* Cronômetros */}
-                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
-            <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg ${
-              timerQuestao.pausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20'
-            }`}>
-              <Timer className={`h-3 w-3 sm:h-4 sm:w-4 ${
-                timerQuestao.pausado ? 'text-red-600' : 'text-blue-600'
-              }`} />
-              <span className={`text-xs sm:text-sm font-mono ${
-                timerQuestao.pausado ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'
-              }`}>
-                {timerQuestao.tempoFormatado}
-              </span>
-            </div>
-            <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg ${
-              timerSessao.pausado ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-900'
-            }`}>
-              <Clock className={`h-3 w-3 sm:h-4 sm:w-4 ${
-                timerSessao.pausado ? 'text-red-600' : 'text-gray-600'
-              }`} />
-              <span className={`text-xs sm:text-sm font-mono ${
-                timerSessao.pausado ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'
-              }`}>
-                {timerSessao.tempoFormatado}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  if (timerSessao.pausado) {
-                    timerSessao.continuar()
-                    timerQuestao.continuar()
-                  } else {
-                    timerSessao.pausar()
-                    timerQuestao.pausar()
-                  }
-                }}
-                className={`flex items-center gap-1 px-2 py-1 text-xs sm:text-sm rounded transition-colors ${
-                  timerSessao.pausado 
-                    ? 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
-                    : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                }`}
-                title={timerSessao.pausado ? 'Continuar cronômetros' : 'Pausar cronômetros'}
-              >
-                {timerSessao.pausado ? (
-                  <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                ) : (
-                  <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                  </svg>
-                )}
-                <span className="hidden sm:inline">{timerSessao.pausado ? 'Play' : 'Pause'}</span>
-              </button>
-              <button
-                onClick={reiniciarSessao}
-                className="flex items-center gap-1 px-2 py-1 text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-              >
-                <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Reiniciar</span>
-              </button>
-            </div>
-          </div>
 
-        {/* Progress bar */}
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-          <div
-            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${((questaoAtual + 1) / questoes.length) * 100}%` }}
-          />
+            {/* Timer da questão */}
+            <span className="bg-white/15 px-2 py-0.5 rounded-lg font-mono text-xs">
+              {timerQuestao.tempoFormatado}
+            </span>
+
+            {/* Timer da sessão */}
+            <span className="bg-white/10 px-2 py-0.5 rounded-lg font-mono text-xs hidden sm:inline-block">
+              {timerSessao.tempoFormatado}
+            </span>
+
+            {/* Pause/Play */}
+            <button
+              onClick={() => {
+                if (timerSessao.pausado) { timerSessao.continuar(); timerQuestao.continuar() }
+                else { timerSessao.pausar(); timerQuestao.pausar() }
+              }}
+              className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              {timerSessao.pausado ? (
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              ) : (
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Linha 2: Barra de progresso */}
+        <div className="w-full bg-white/20 rounded-full h-1.5">
+          <div className="bg-white h-1.5 rounded-full transition-all duration-300"
+            style={{ width: `${((questaoAtual + 1) / questoes.length) * 100}%` }} />
+        </div>
+
+        {/* Linha 3: Stats compactas */}
+        <div className="flex items-center justify-between mt-2 text-[10px] sm:text-xs opacity-80">
+          <div className="flex items-center gap-3">
+            <span className="sm:hidden">{questao.materia.nome}</span>
+            <span>✅ {acertosAteAgora}</span>
+            <span>❌ {respostas.length - acertosAteAgora}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {questao.assunto && (
+              <span className="px-1.5 py-0.5 bg-white/20 rounded text-[10px]">{questao.assunto.nome}</span>
+            )}
+            <span className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">
+              {questao.tipo === 'certo_errado' ? 'C/E' : 'ME'}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Questão */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="mb-6">
-        <div className="mb-4">
-          <EnunciadoFormatado 
-            texto={questao.enunciado}
-            className="text-lg font-medium"
-          />
-    </div>
-  
-  {/* Imagem da questão */}
-  {questao.imagem_url && (
-    <div className="mb-4">
-      <img
-        src={questao.imagem_url}
-        alt="Imagem da questão"
-        className="max-w-full h-auto max-h-96 mx-auto rounded-lg shadow-sm border border-gray-200 dark:border-gray-600"
-        onError={(e) => {
-          console.error('Erro ao carregar imagem da questão:', questao.imagem_url)
-          e.currentTarget.style.display = 'none'
-        }}
-      />
-    </div>
-  )}
-          
-          <div className="flex items-center justify-between">
-          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
-            questao.tipo === 'certo_errado'
-              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
-              : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
-          }`}>
-            {questao.tipo === 'certo_errado' ? 'Certo/Errado' : 'Múltipla Escolha'}
-          </span>
-
-          {/* ADICIONAR ESTE BLOCO LOGO APÓS O SPAN ACIMA */}
-          {questao.tipo === 'certo_errado' && (questao.resposta_certo_errado === null || questao.resposta_certo_errado === undefined) && (
-            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
-              <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
-                <span className="text-sm">⚠️</span>
-                <span className="text-xs">
-                  Esta questão não tem gabarito definido. Sua resposta será considerada correta para não prejudicar seu desempenho.
-                </span>
-              </div>
-            </div>
-          )}
-
-            {/* Mostrar assunto da questão */}
-            {questao.assunto && (
-              <span
-                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-white ml-2"
-                style={{ backgroundColor: questao.assunto.cor }}
-              >
-                {questao.assunto.nome}
-              </span>
-            )}
-
-            {/* Botão para limpar eliminações - só aparece se houver alternativas eliminadas */}
-            {questao.tipo === 'multipla_escolha' && alternativasEliminadas.length > 0 && (
-              <button
-                onClick={limparTodasEliminacoes}
-                disabled={mostrarResposta}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded transition-colors disabled:opacity-50"
-              >
-                <RotateCw className="h-3 w-3" />
-                Restaurar Eliminadas ({alternativasEliminadas.length})
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Alternativas */}
-        <div className="space-y-3 mb-6">
-        {questao.tipo === 'certo_errado' ? (
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setRespostaSelecionada(true)}
-            disabled={mostrarResposta}
-            className={`p-4 border-2 rounded-lg transition-all ${
-              respostaSelecionada === true
-                ? mostrarResposta
-                  ? respostas[respostas.length - 1]?.correta
-                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                    : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                  : 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
-            } ${mostrarResposta ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <CheckCircle className={`h-5 w-5 ${
-                mostrarResposta && respostaSelecionada === true
-                  ? respostas[respostas.length - 1]?.correta ? 'text-green-600' : 'text-red-600'
-                  : 'text-green-600'
-              }`} />
-              <span className="font-medium">CERTO</span>
-              {mostrarResposta && respostaSelecionada === true && (
-                respostas[respostas.length - 1]?.correta ? (
-                  <CheckCircle className="h-4 w-4 text-green-600 ml-auto" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600 ml-auto" />
-                )
-              )}
-            </div>
-          </button>
-          
-          <button
-            onClick={() => setRespostaSelecionada(false)}
-            disabled={mostrarResposta}
-            className={`p-4 border-2 rounded-lg transition-all ${
-              respostaSelecionada === false
-                ? mostrarResposta
-                  ? respostas[respostas.length - 1]?.correta
-                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                    : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                  : 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
-            } ${mostrarResposta ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <XCircle className={`h-5 w-5 ${
-                mostrarResposta && respostaSelecionada === false
-                  ? respostas[respostas.length - 1]?.correta ? 'text-green-600' : 'text-red-600'
-                  : 'text-red-600'
-              }`} />
-              <span className="font-medium">ERRADO</span>
-              {mostrarResposta && respostaSelecionada === false && (
-                respostas[respostas.length - 1]?.correta ? (
-                  <CheckCircle className="h-4 w-4 text-green-600 ml-auto" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600 ml-auto" />
-                )
-              )}
-            </div>
-          </button>
-        </div>
-          ) : (
-            questao.alternativas?.map((alternativa, index) => {
-              const isEliminada = alternativasEliminadas.includes(alternativa.id)
-              
-              return (
-                <div key={alternativa.id} className="relative">
-                  <button
-                    onClick={() => setRespostaSelecionada(alternativa.id)}
-                    disabled={mostrarResposta || isEliminada}
-                    className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
-                      isEliminada
-                        ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 opacity-50 cursor-not-allowed'
-                        : respostaSelecionada === alternativa.id
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
-                    } ${mostrarResposta ? 'cursor-not-allowed' : isEliminada ? 'cursor-not-allowed' : 'cursor-pointer'} ${
-                      mostrarResposta && alternativa.correta
-                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                        : ''
-                    } ${
-                      mostrarResposta && respostaSelecionada === alternativa.id && !alternativa.correta
-                        ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                        : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`font-medium w-6 ${isEliminada ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
-                        {String.fromCharCode(97 + index)})
-                      </span>
-                      <span className={`flex-1 text-justify ${isEliminada ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>
-                        {alternativa.texto}
-                      </span>
-                      {mostrarResposta && alternativa.correta && (
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                      )}
-                      {mostrarResposta && respostaSelecionada === alternativa.id && !alternativa.correta && (
-                        <XCircle className="h-5 w-5 text-red-600" />
-                      )}
-                    </div>
-                  </button>
-
-                  {/* Botão X para eliminar alternativa */}
-                  {!mostrarResposta && (
-                    <button
-                      onClick={() => toggleEliminarAlternativa(alternativa.id)}
-                      className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center text-xs transition-colors ${
-                        isEliminada
-                          ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                          : 'bg-red-100 text-red-600 hover:bg-red-200'
-                      }`}
-                      title={isEliminada ? 'Restaurar alternativa' : 'Eliminar alternativa'}
-                    >
-                      {isEliminada ? <RotateCw className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                    </button>
-                  )}
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        {/* Explicação */}
-        {mostrarResposta && questao.explicacao && (
-          <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-            <h4 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-              💡 Explicação
-            </h4>
-            <p className="text-gray-700 dark:text-gray-300 text-justify">
-              {questao.explicacao}
+      {/* ============================== */}
+      {/* ENUNCIADO */}
+      {/* ============================== */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
+        {/* Alerta de questão sem gabarito */}
+        {questao.tipo === 'certo_errado' && (questao.resposta_certo_errado === null || questao.resposta_certo_errado === undefined) && (
+          <div className="mb-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-xl">
+            <p className="text-[10px] sm:text-xs text-yellow-800 dark:text-yellow-300">
+              ⚠️ Questão sem gabarito definido. Sua resposta será considerada correta.
             </p>
           </div>
         )}
 
-                {/* Botões de ação */}
-                <div className="flex flex-col sm:flex-row gap-3">
+        <EnunciadoFormatado texto={questao.enunciado} className="text-sm sm:text-base" />
+
+        {/* Imagem */}
+        {questao.imagem_url && (
+          <div className="mt-3">
+            <img src={questao.imagem_url} alt="Imagem da questão"
+              className="max-w-full h-auto max-h-64 sm:max-h-96 mx-auto rounded-xl border border-gray-200 dark:border-gray-600"
+              onError={(e) => { e.currentTarget.style.display = 'none' }} />
+          </div>
+        )}
+      </div>
+
+      {/* ============================== */}
+      {/* ALTERNATIVAS */}
+      {/* ============================== */}
+      <div className="space-y-2">
+        {questao.tipo === 'certo_errado' ? (
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { valor: true, label: 'CERTO', iconOk: CheckCircle },
+              { valor: false, label: 'ERRADO', iconOk: XCircle }
+            ].map(opcao => {
+              const selecionada = respostaSelecionada === opcao.valor
+              const ultimaResposta = respostas[respostas.length - 1]
+              const Icon = opcao.iconOk
+
+              let estilo = 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-300'
+              if (selecionada && !mostrarResposta) {
+                estilo = 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+              } else if (mostrarResposta && selecionada) {
+                estilo = ultimaResposta?.correta
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                  : 'border-red-500 bg-red-50 dark:bg-red-900/20'
+              } else if (mostrarResposta && questao.resposta_certo_errado === opcao.valor) {
+                estilo = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+              }
+
+              return (
+                <button key={String(opcao.valor)}
+                  onClick={() => !mostrarResposta && setRespostaSelecionada(opcao.valor)}
+                  disabled={mostrarResposta}
+                  className={`p-3 sm:p-4 rounded-2xl border-2 transition-all active:scale-[0.97] min-h-[56px] flex items-center justify-center gap-2 font-semibold text-sm sm:text-base ${estilo}`}
+                >
+                  <Icon className={`h-5 w-5 ${opcao.valor ? 'text-emerald-500' : 'text-red-500'}`} />
+                  {opcao.label}
+                  {mostrarResposta && selecionada && (
+                    ultimaResposta?.correta
+                      ? <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      : <XCircle className="h-4 w-4 text-red-500" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          questao.alternativas?.map((alternativa, index) => {
+            const isEliminada = alternativasEliminadas.includes(alternativa.id)
+            const selecionada = respostaSelecionada === alternativa.id
+
+            let estilo = 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800'
+            if (isEliminada) {
+              estilo = 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 opacity-40'
+            } else if (selecionada && !mostrarResposta) {
+              estilo = 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+            } else if (mostrarResposta && alternativa.correta) {
+              estilo = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+            } else if (mostrarResposta && selecionada && !alternativa.correta) {
+              estilo = 'border-red-500 bg-red-50 dark:bg-red-900/20'
+            }
+
+            return (
+              <div key={alternativa.id} className="relative">
+                <button
+                  onClick={() => !mostrarResposta && !isEliminada && setRespostaSelecionada(alternativa.id)}
+                  disabled={mostrarResposta || isEliminada}
+                  className={`w-full p-3 sm:p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] min-h-[48px] ${estilo}`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className={`font-bold text-sm shrink-0 mt-0.5 ${isEliminada ? 'text-gray-300 line-through' : 'text-gray-400'}`}>
+                      {String.fromCharCode(97 + index)})
+                    </span>
+                    <span className={`flex-1 text-sm text-justify ${isEliminada ? 'text-gray-300 line-through' : 'text-gray-900 dark:text-white'}`}>
+                      {alternativa.texto}
+                    </span>
+                    {mostrarResposta && alternativa.correta && <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />}
+                    {mostrarResposta && selecionada && !alternativa.correta && <XCircle className="h-5 w-5 text-red-500 shrink-0" />}
+                  </div>
+                </button>
+
+                {/* Botão eliminar */}
+                {!mostrarResposta && !isSimulado && (
+                  <button
+                    onClick={() => toggleEliminarAlternativa(alternativa.id)}
+                    className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                      isEliminada ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500 hover:bg-red-200'
+                    }`}
+                  >
+                    {isEliminada ? <RotateCw className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                  </button>
+                )}
+              </div>
+            )
+          })
+        )}
+
+        {/* Restaurar eliminadas */}
+        {questao.tipo === 'multipla_escolha' && alternativasEliminadas.length > 0 && !mostrarResposta && (
+          <button onClick={limparTodasEliminacoes}
+            className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 px-1">
+            <RotateCw className="h-3 w-3" /> Restaurar {alternativasEliminadas.length} eliminada(s)
+          </button>
+        )}
+      </div>
+
+      {/* ============================== */}
+      {/* FEEDBACK + EXPLICAÇÃO (após responder) */}
+      {/* ============================== */}
+      {mostrarResposta && (
+        <div className={`rounded-2xl p-4 border-2 text-center ${
+          respostas[respostas.length - 1]?.correta
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700'
+            : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+        }`}>
+          <div className="text-2xl mb-1">
+            {respostas[respostas.length - 1]?.correta ? '🎉' : '💪'}
+          </div>
+          <p className={`text-sm font-bold ${
+            respostas[respostas.length - 1]?.correta
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-red-700 dark:text-red-300'
+          }`}>
+            {respostas[respostas.length - 1]?.correta ? 'Correto!' : 'Incorreto'}
+          </p>
+
+          {/* Botão ver explicação */}
+          {questao.explicacao && (
+            <button
+              onClick={() => setMostrarExplicacaoModal(!mostrarExplicacaoModal)}
+              className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mx-auto"
+            >
+              💡 {mostrarExplicacaoModal ? 'Ocultar explicação' : 'Ver explicação'}
+            </button>
+          )}
+
+          {mostrarExplicacaoModal && questao.explicacao && (
+            <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded-xl text-left border border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-700 dark:text-gray-300 text-justify">{questao.explicacao}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============================== */}
+      {/* AÇÕES: Comentários + Report (ícones flutuantes) */}
+      {/* ============================== */}
+      {!isSimulado && (
+        <div className="flex items-center gap-2 px-1">
           <button
-            onClick={voltarQuestao}
-            disabled={questaoAtual === 0}
-            className="px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
+            onClick={() => { setMostrarComentarios(!mostrarComentarios); setMostrarReport(false) }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+              mostrarComentarios
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
           >
+            <MessageCircle className="h-3.5 w-3.5" /> Comentários
+          </button>
+          <button
+            onClick={() => { setMostrarReport(!mostrarReport); setMostrarComentarios(false) }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+              mostrarReport
+                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            <Flag className="h-3.5 w-3.5" /> Reportar
+          </button>
+          <div className="flex-1" />
+          <button onClick={reiniciarSessao}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <RotateCcw className="h-3.5 w-3.5" /> Reiniciar
+          </button>
+        </div>
+      )}
+
+      {/* Painéis de comentários/report */}
+      {!isSimulado && mostrarComentarios && (
+        <ComentariosInline questaoId={questao.id} isOpen={true} onToggle={() => setMostrarComentarios(false)} />
+      )}
+      {!isSimulado && mostrarReport && (
+        <ReportarErro questaoId={questao.id} isOpen={true} onToggle={() => setMostrarReport(false)} />
+      )}
+
+      {/* ============================== */}
+      {/* BOTÕES DE NAVEGAÇÃO (Desktop) */}
+      {/* ============================== */}
+      <div className="hidden sm:flex gap-2">
+        <button onClick={voltarQuestao} disabled={questaoAtual === 0}
+          className="px-4 py-3 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 flex items-center gap-2 text-sm">
+          <ArrowLeft className="h-4 w-4" /> Anterior
+        </button>
+
+        {!mostrarResposta ? (
+          <>
+            <button onClick={verificarResposta} disabled={respostaSelecionada === null}
+              className={`flex-1 py-3 text-white rounded-xl transition-all disabled:opacity-40 font-semibold text-sm flex items-center justify-center gap-2 ${
+                isSimulado ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}>
+              {isSimulado
+                ? (isUltimaQuestao ? 'Finalizar Simulado' : 'Confirmar e Avançar')
+                : 'Confirmar Resposta'
+              }
+            </button>
+            {!isSimulado && (
+              <button onClick={pularQuestao} disabled={isUltimaQuestao}
+                className="px-4 py-3 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-30 flex items-center gap-2 text-sm">
+                Pular <ArrowRight className="h-4 w-4" />
+              </button>
+            )}
+          </>
+        ) : (
+          <button onClick={proximaQuestao}
+            className="flex-1 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-semibold text-sm flex items-center justify-center gap-2">
+            {isUltimaQuestao ? 'Finalizar Sessão' : 'Próxima Questão'} <ArrowRight className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* ============================== */}
+      {/* BOTÕES STICKY (Mobile) */}
+      {/* ============================== */}
+      <div className="sm:hidden fixed bottom-0 inset-x-0 p-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-700 z-40">
+        <div className="flex gap-2">
+          <button onClick={voltarQuestao} disabled={questaoAtual === 0}
+            className="px-3 py-3 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl disabled:opacity-30 transition-colors">
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Anterior</span>
-            <span className="sm:hidden">Ant.</span>
           </button>
 
           {!mostrarResposta ? (
             <>
-              <button
-                onClick={verificarResposta}
-                disabled={respostaSelecionada === null}
-                className={`flex-1 px-4 sm:px-6 py-2 sm:py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base ${
-                  isSimulado ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {isSimulado ? (
-                  <>
-                    <span className="hidden sm:inline">{isUltimaQuestao ? 'Finalizar Simulado' : 'Confirmar e Avançar'}</span>
-                    <span className="sm:hidden">{isUltimaQuestao ? 'Finalizar' : 'Confirmar'}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="hidden sm:inline">Confirmar Resposta</span>
-                    <span className="sm:hidden">Confirmar</span>
-                  </>
-                )}
+              <button onClick={verificarResposta} disabled={respostaSelecionada === null}
+                className={`flex-1 py-3 text-white rounded-xl transition-all disabled:opacity-40 font-semibold text-sm ${
+                  isSimulado ? 'bg-red-600 active:bg-red-700' : 'bg-blue-600 active:bg-blue-700'
+                }`}>
+                {isSimulado
+                  ? (isUltimaQuestao ? 'Finalizar' : 'Confirmar')
+                  : 'Confirmar'
+                }
               </button>
-              
-              <button
-                onClick={pularQuestao}
-                disabled={isUltimaQuestao}
-                className="px-3 sm:px-4 py-2 sm:py-3 border border-yellow-300 text-yellow-700 dark:text-yellow-400 rounded-lg hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                Pular
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={proximaQuestao}
-                className="flex-1 px-4 sm:px-6 py-2 sm:py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <span className="hidden sm:inline">{isUltimaQuestao ? 'Finalizar Sessão' : 'Próxima Questão'}</span>
-                <span className="sm:hidden">{isUltimaQuestao ? 'Finalizar' : 'Próxima'}</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-              
-              {!isUltimaQuestao && (
-                <button
-                  onClick={avancarQuestao}
-                  className="px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
-                >
-                  <span className="hidden sm:inline">Avançar</span>
-                  <span className="sm:hidden">Avanç.</span>
-                  <ArrowRight className="h-4 w-4" />
+              {!isSimulado && (
+                <button onClick={pularQuestao} disabled={isUltimaQuestao}
+                  className="px-3 py-3 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl disabled:opacity-30 text-sm font-medium">
+                  Pular
                 </button>
               )}
             </>
+          ) : (
+            <button onClick={proximaQuestao}
+              className="flex-1 py-3 bg-emerald-600 text-white rounded-xl active:bg-emerald-700 font-semibold text-sm flex items-center justify-center gap-2">
+              {isUltimaQuestao ? 'Finalizar' : 'Próxima'} <ArrowRight className="h-4 w-4" />
+            </button>
           )}
         </div>
-        </div>
-
-        {/* Comentários e Reports - não aparece no simulado */}
-        {!isSimulado && <ComentariosInline
-          questaoId={questao.id}
-          isOpen={mostrarComentarios}
-          onToggle={() => setMostrarComentarios(!mostrarComentarios)}
-          />}
-
-          {!isSimulado && <ReportarErro
-          questaoId={questao.id}
-          isOpen={mostrarReport}
-          onToggle={() => setMostrarReport(!mostrarReport)}
-          />}
       </div>
     </div>
   )

@@ -423,6 +423,31 @@ export function gerarPdfQuestoes(questoes: QuestaoEstudo[], config: ConfigPdf = 
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i)
 
+    // Marca d'água diagonal com CPF
+    if (config.usuario?.cpf) {
+      doc.saveGraphicsState()
+      const gState = (doc as any).GState({ opacity: 0.06 })
+      doc.setGState(gState)
+      doc.setTextColor(150, 0, 0)
+      doc.setFontSize(50)
+      doc.setFont('helvetica', 'bold')
+      
+      // Texto diagonal repetido
+      const textoMarca = `CPF: ${config.usuario.cpf}`
+      
+      // Rotacionar e posicionar no centro
+      doc.text(textoMarca, pw / 2, ph / 2 - 15, { 
+        align: 'center', 
+        angle: 35 
+      })
+      doc.text(textoMarca, pw / 2, ph / 2 + 25, { 
+        align: 'center', 
+        angle: 35 
+      })
+      
+      doc.restoreGraphicsState()
+    }
+
     doc.setDrawColor(220, 220, 220)
     doc.setLineWidth(0.15)
     doc.line(ml, ph - 18, pw - mr, ph - 18)

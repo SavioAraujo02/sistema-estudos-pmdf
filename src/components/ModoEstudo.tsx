@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw, Clock, Target, Timer, X, RotateCw, MessageCircle, Flag, ChevronUp, Sparkles } from 'lucide-react'
+import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw, Clock, Target, Timer, X, RotateCw, MessageCircle, Flag, ChevronUp, Sparkles, Scissors } from 'lucide-react'
 import { QuestaoEstudo, salvarResposta } from '@/lib/estudo'
 import { 
   getRespostaCorretaCertoErrado, 
@@ -72,6 +72,8 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
   const [tempoRestante, setTempoRestante] = useState<number | null>(null)
   const [simuladoFinalizado, setSimuladoFinalizado] = useState(false)
   const [alternativasEliminadas, setAlternativasEliminadas] = useState<string[]>([])
+  // Histórico de questões já respondidas anteriormente
+  const [historicoQuestoes, setHistoricoQuestoes] = useState<Map<string, { acertou: boolean, vezes: number, ultimaResposta: any }>>(new Map())
 
   // ==========================================
   // TODA A LÓGICA (INALTERADA)
@@ -125,6 +127,98 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
     setTempoInicio(Date.now())
     setTempoQuestao(Date.now())
   }, [])
+
+  // Carregar histórico de respostas anteriores para marcar questões já respondidas
+  useEffect(() => {
+    let cancelado = false
+
+    const carregarHistoricoQuestoes = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user || questoes.length === 0 || cancelado) return
+
+        const ids = questoes.map(q => q.id)
+        const mapa = new Map<string, { acertou: boolean, vezes: number, ultimaResposta: any }>()
+        
+        for (let i = 0; i < ids.length; i += 50) {
+          if (cancelado) return
+          const lote = ids.slice(i, i + 50)
+
+          // Buscar do historico_respostas_detalhado (tem a resposta do usuário)
+          const { data: detalhado, error: errDet } = await supabase
+            .from('historico_respostas_detalhado')
+            .select('questao_id, acertou, resposta_usuario, created_at')
+            .eq('usuario_id', user.id)
+            .in('questao_id', lote)
+            .order('created_at', { ascending: false })
+
+          if (errDet) {
+            console.error('Erro ao buscar histórico detalhado:', errDet)
+          }
+
+          // Buscar também do historico_estudos (pode ter mais registros)
+          const { data: simples, error: errSimples } = await supabase
+            .from('historico_estudos')
+            .select('questao_id, acertou')
+            .eq('usuario_id', user.id)
+            .in('questao_id', lote)
+
+          if (errSimples) {
+            console.error('Erro ao buscar histórico:', errSimples)
+          }
+
+          // Primeiro, processar o detalhado (tem a resposta)
+          if (detalhado) {
+            detalhado.forEach(h => {
+              const existing = mapa.get(h.questao_id)
+              if (existing) {
+                existing.vezes++
+                if (h.acertou) existing.acertou = true
+                // Manter a resposta mais recente (já vem ordenado desc)
+              } else {
+                mapa.set(h.questao_id, { 
+                  acertou: h.acertou, 
+                  vezes: 1, 
+                  ultimaResposta: h.resposta_usuario 
+                })
+              }
+            })
+          }
+
+          // Depois, complementar com historico_estudos (questões que não estão no detalhado)
+          if (simples) {
+            simples.forEach(h => {
+              const existing = mapa.get(h.questao_id)
+              if (existing) {
+                // Já existe do detalhado, só incrementar contagem se for registro a mais
+                const vezesDetalhado = detalhado?.filter(d => d.questao_id === h.questao_id).length || 0
+                const vezesSimplesAteMomento = simples.filter(s => s.questao_id === h.questao_id).indexOf(h)
+                if (vezesSimplesAteMomento >= vezesDetalhado) {
+                  existing.vezes++
+                }
+                if (h.acertou) existing.acertou = true
+              } else {
+                mapa.set(h.questao_id, { acertou: h.acertou, vezes: 1, ultimaResposta: null })
+              }
+            })
+          }
+        }
+
+        if (!cancelado) {
+          setHistoricoQuestoes(mapa)
+          console.log(`📊 Histórico carregado: ${mapa.size} questões já respondidas de ${ids.length}`)
+        }
+      } catch (error: any) {
+        if (!cancelado && error?.name !== 'AbortError') {
+          console.error('Erro ao carregar histórico:', error)
+        }
+      }
+    }
+
+    carregarHistoricoQuestoes()
+
+    return () => { cancelado = true }
+  }, [questoes.length])
 
   useEffect(() => {
     if (questoes.length === 0) return
@@ -299,7 +393,8 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
       setMostrarResposta(true)
     }
   
-    if (configuracao?.salvarHistorico === true) {
+    // Sempre salvar no histórico (exceto modo rápido/teste)
+    if (configuracao?.modoEstudo !== 'rapido') {
       await salvarResposta(questao.id, correta)
       await salvarTempoResposta(questao.id, tempoResposta)
     }
@@ -446,7 +541,10 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
     )
   }
 
-  const acertosAteAgora = respostas.filter(r => r.correta).length
+  const respostasReais = respostas.filter(r => r.resposta !== null)
+  const acertosAteAgora = respostasReais.filter(r => r.correta).length
+  const errosAteAgora = respostasReais.filter(r => !r.correta).length
+  const puladasAteAgora = respostas.filter(r => r.resposta === null).length
 
   return (
     <div className="max-w-2xl mx-auto pb-24 sm:pb-6 space-y-3 px-1">
@@ -520,7 +618,11 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
           <div className="flex items-center gap-3">
             <span className="sm:hidden">{questao.materia.nome}</span>
             <span>✅ {acertosAteAgora}</span>
-            <span>❌ {respostas.length - acertosAteAgora}</span>
+            <span>❌ {errosAteAgora}</span>
+            {puladasAteAgora > 0 && <span>⏭️ {puladasAteAgora}</span>}
+            {historicoQuestoes.size > 0 && (
+              <span className="opacity-60">📋 {historicoQuestoes.size}/{questoes.length}</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {questao.assunto && (
@@ -537,6 +639,37 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
       {/* ENUNCIADO */}
       {/* ============================== */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
+        {/* Indicador de questão já respondida */}
+        {historicoQuestoes.has(questao.id) && (() => {
+          const hist = historicoQuestoes.get(questao.id)!
+          let respostaTexto = ''
+          
+          if (hist.ultimaResposta !== null && hist.ultimaResposta !== undefined) {
+            if (questao.tipo === 'certo_errado') {
+              respostaTexto = hist.ultimaResposta === true ? 'CERTO' : 'ERRADO'
+            } else {
+              // Encontrar a letra da alternativa
+              const idx = questao.alternativas?.findIndex(a => a.id === hist.ultimaResposta)
+              if (idx !== undefined && idx >= 0) {
+                respostaTexto = `alternativa ${String.fromCharCode(97 + idx)})`
+              }
+            }
+          }
+
+          return (
+            <div className={`mb-3 px-3 py-1.5 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 ${
+              hist.acertou
+                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
+            }`}>
+              {hist.acertou ? '✅' : '❌'}
+              Já respondida ({hist.vezes}x)
+              {hist.acertou ? ' — acertou' : ' — errou'}
+              {respostaTexto && <span className="opacity-70">· Respondeu: {respostaTexto}</span>}
+            </div>
+          )
+        })()}
+
         {/* Alerta de questão sem gabarito */}
         {questao.tipo === 'certo_errado' && (questao.resposta_certo_errado === null || questao.resposta_certo_errado === undefined) && (
           <div className="mb-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-xl">
@@ -572,9 +705,16 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
               const ultimaResposta = respostas[respostas.length - 1]
               const Icon = opcao.iconOk
 
+              const histCE = historicoQuestoes.get(questao.id)
+              const foiRespostaAnteriorCE = !mostrarResposta && !selecionada && histCE?.ultimaResposta === opcao.valor
+
               let estilo = 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-300'
               if (selecionada && !mostrarResposta) {
                 estilo = 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+              } else if (foiRespostaAnteriorCE) {
+                estilo = histCE.acertou
+                  ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/10'
+                  : 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10'
               } else if (mostrarResposta && selecionada) {
                 estilo = ultimaResposta?.correta
                   ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
@@ -591,10 +731,10 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
                 >
                   <Icon className={`h-5 w-5 ${opcao.valor ? 'text-emerald-500' : 'text-red-500'}`} />
                   {opcao.label}
-                  {mostrarResposta && selecionada && (
-                    ultimaResposta?.correta
-                      ? <CheckCircle className="h-4 w-4 text-emerald-500" />
-                      : <XCircle className="h-4 w-4 text-red-500" />
+                  {foiRespostaAnteriorCE && (
+                    <span className={`text-[10px] ${histCE!.acertou ? 'text-emerald-500' : 'text-red-500'}`}>
+                      (anterior)
+                    </span>
                   )}
                 </button>
               )
@@ -605,6 +745,9 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
             const isEliminada = alternativasEliminadas.includes(alternativa.id)
             const selecionada = respostaSelecionada === alternativa.id
 
+            const hist = historicoQuestoes.get(questao.id)
+            const foiRespostaAnterior = !mostrarResposta && !selecionada && hist?.ultimaResposta === alternativa.id
+
             let estilo = 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800'
             if (isEliminada) {
               estilo = 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 opacity-40'
@@ -614,14 +757,18 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
               estilo = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
             } else if (mostrarResposta && selecionada && !alternativa.correta) {
               estilo = 'border-red-500 bg-red-50 dark:bg-red-900/20'
+            } else if (foiRespostaAnterior) {
+              estilo = hist.acertou
+                ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/10'
+                : 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10'
             }
 
             return (
-              <div key={alternativa.id} className="relative">
+              <div key={alternativa.id} className="flex items-start gap-1.5">
                 <button
                   onClick={() => !mostrarResposta && !isEliminada && setRespostaSelecionada(alternativa.id)}
                   disabled={mostrarResposta || isEliminada}
-                  className={`w-full p-3 sm:p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] min-h-[48px] ${estilo}`}
+                  className={`flex-1 p-3 sm:p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] min-h-[48px] ${estilo}`}
                 >
                   <div className="flex items-start gap-2.5">
                     <span className={`font-bold text-sm shrink-0 mt-0.5 ${isEliminada ? 'text-gray-300 line-through' : 'text-gray-400'}`}>
@@ -632,6 +779,15 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
                     </span>
                     {mostrarResposta && alternativa.correta && <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />}
                     {mostrarResposta && selecionada && !alternativa.correta && <XCircle className="h-5 w-5 text-red-500 shrink-0" />}
+                    {foiRespostaAnterior && (
+                      <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        hist!.acertou 
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' 
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                      }`}>
+                        {hist!.acertou ? '✅ acertou antes' : '❌ errou antes'}
+                      </span>
+                    )}
                   </div>
                 </button>
 
@@ -639,11 +795,11 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
                 {!mostrarResposta && !isSimulado && (
                   <button
                     onClick={() => toggleEliminarAlternativa(alternativa.id)}
-                    className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                    className={`mt-3 shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
                       isEliminada ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500 hover:bg-red-200'
                     }`}
                   >
-                    {isEliminada ? <RotateCw className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                    {isEliminada ? <RotateCw className="h-3.5 w-3.5" /> : <Scissors className="h-3.5 w-3.5" />}
                   </button>
                 )}
               </div>

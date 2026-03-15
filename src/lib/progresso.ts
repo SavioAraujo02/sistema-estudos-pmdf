@@ -97,24 +97,23 @@ export async function buscarProgressoSessao(): Promise<ProgressoSessao | null> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
+    // Buscar a sessão mais recente não finalizada (sem .single() pra evitar erro com múltiplas)
     const { data, error } = await supabase
       .from('progresso_sessao')
       .select('*')
       .eq('usuario_id', user.id)
       .eq('finalizada', false)
-      .single()
+      .order('ultima_atividade', { ascending: false })
+      .limit(1)
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        // Nenhuma sessão ativa encontrada
-        return null
-      }
       console.error('Erro ao buscar progresso:', error)
       return null
     }
 
-    console.log('📖 Progresso encontrado:', data)
-    return data
+    if (!data || data.length === 0) return null
+
+    return data[0]
   } catch (error) {
     console.error('Erro inesperado ao buscar progresso:', error)
     return null
@@ -156,7 +155,10 @@ export async function adicionarRespostaProgresso(resposta: RespostaSalva): Promi
 
     // Buscar sessão atual
     const sessao = await buscarProgressoSessao()
-    if (!sessao) return false
+    if (!sessao) {
+      console.log('⚠️ Nenhuma sessão ativa para salvar resposta — salvando só no histórico')
+      return false
+    }
 
     // Adicionar nova resposta
     const novasRespostas = [...sessao.respostas, resposta]
@@ -195,18 +197,21 @@ export async function finalizarSessao(resultados?: {
       return false
     }
 
-    // Buscar sessão ativa
-    const { data: sessaoAtiva, error: erroConsulta } = await supabase
+    // Buscar sessão ativa (a mais recente)
+    const { data: sessoesAtivas, error: erroConsulta } = await supabase
       .from('progresso_sessao')
       .select('*')
       .eq('usuario_id', user.id)
       .eq('finalizada', false)
-      .single()
+      .order('ultima_atividade', { ascending: false })
+      .limit(1)
 
-    if (erroConsulta || !sessaoAtiva) {
+    if (erroConsulta || !sessoesAtivas || sessoesAtivas.length === 0) {
       console.log('ℹ️ Nenhuma sessão ativa encontrada')
       return true
     }
+
+    const sessaoAtiva = sessoesAtivas[0]
 
     // Calcular estatísticas se fornecidas
     const estatisticas = resultados ? {
@@ -503,5 +508,43 @@ export async function questaoJaRespondida(questaoId: string): Promise<{
   } catch (error) {
     console.error('Erro inesperado ao verificar questão:', error)
     return { respondida: false }
+  }
+  
+}
+
+// Finalizar sessões órfãs (antigas não finalizadas)
+export async function finalizarSessoesOrfas(): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return 0
+
+    // Buscar todas as sessões não finalizadas
+    const { data: sessoes, error } = await supabase
+      .from('progresso_sessao')
+      .select('id')
+      .eq('usuario_id', user.id)
+      .eq('finalizada', false)
+      .order('ultima_atividade', { ascending: false })
+
+    if (error || !sessoes || sessoes.length <= 1) return 0
+
+    // Manter só a mais recente, finalizar as demais
+    const sessoesParaFinalizar = sessoes.slice(1).map(s => s.id)
+
+    const { error: errUpdate } = await supabase
+      .from('progresso_sessao')
+      .update({ finalizada: true, ultima_atividade: new Date().toISOString() })
+      .in('id', sessoesParaFinalizar)
+
+    if (errUpdate) {
+      console.error('Erro ao finalizar sessões órfãs:', errUpdate)
+      return 0
+    }
+
+    console.log(`🧹 ${sessoesParaFinalizar.length} sessões órfãs finalizadas`)
+    return sessoesParaFinalizar.length
+  } catch (error) {
+    console.error('Erro:', error)
+    return 0
   }
 }

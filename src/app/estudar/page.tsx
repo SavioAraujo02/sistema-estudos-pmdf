@@ -18,7 +18,8 @@ import {
   finalizarSessao as finalizarProgressoSessao, 
   abandonarSessao, 
   temSessaoEmAndamento, 
-  getResumoSessao 
+  getResumoSessao,
+  finalizarSessoesOrfas
 } from '@/lib/progresso'
 import { FiltrosInteligentes } from '@/components/FiltrosInteligentes'
 import { getEstatisticasFiltros } from '@/lib/estudo'
@@ -443,6 +444,9 @@ export default function EstudarPage() {
 
   const iniciarSessao = async () => {
     setLoading(true)
+    
+    // Finalizar sessões órfãs antes de criar nova
+    await finalizarSessoesOrfas()
     
     console.log('💾 Iniciando nova sessão com progresso...')
     

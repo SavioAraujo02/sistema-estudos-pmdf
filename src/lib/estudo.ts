@@ -337,9 +337,9 @@ export async function getEstatisticasFiltros(materiaIds?: string | string[], ass
 
       // Buscar histórico do usuário
       let queryHistorico = supabase
-        .from('historico_respostas_detalhado')
-        .select('questao_id, acertou, questoes!inner(materia_id, assunto_id)')
-        .eq('usuario_id', user.id)
+      .from('historico_respostas_detalhado')
+      .select('questao_id, acertou, questoes!inner(materia_id, assunto_id)')
+      .eq('usuario_id', user.id)
 
       if (materiaIds) {
         if (Array.isArray(materiaIds)) {

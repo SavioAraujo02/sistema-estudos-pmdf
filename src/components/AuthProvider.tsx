@@ -300,8 +300,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       document.addEventListener(event, handleActivity, { passive: true })
     })
 
+    // Verificar logout forçado a cada 15 segundos
+    const checkForceLogout = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('usuarios')
+          .select('forcar_logout')
+          .eq('id', user.id)
+          .single()
+
+        if (!error && data?.forcar_logout) {
+          console.log('🚪 Logout forçado detectado')
+          // Resetar o campo
+          await supabase
+            .from('usuarios')
+            .update({ forcar_logout: false })
+            .eq('id', user.id)
+          
+          // Fazer logout
+          await signOut()
+        }
+      } catch (error) {
+        console.error('Erro ao verificar logout forçado:', error)
+      }
+    }
+
+    const forceLogoutInterval = setInterval(checkForceLogout, 15000)
+
     return () => {
       clearInterval(interval)
+      clearInterval(forceLogoutInterval)
       events.forEach(event => {
         document.removeEventListener(event, handleActivity)
       })

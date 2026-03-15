@@ -614,15 +614,15 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
 
         {/* Linha 3: Stats compactas */}
         <div className="flex items-center justify-between mt-2 text-[10px] sm:text-xs opacity-80">
-          <div className="flex items-center gap-3">
-            <span className="sm:hidden">{questao.materia.nome}</span>
-            <span>✅ {acertosAteAgora}</span>
-            <span>❌ {errosAteAgora}</span>
-            {puladasAteAgora > 0 && <span>⏭️ {puladasAteAgora}</span>}
-            {historicoQuestoes.size > 0 && (
-              <span className="opacity-60">📋 {historicoQuestoes.size}/{questoes.length}</span>
-            )}
-          </div>
+        <div className="flex items-center gap-3">
+          <span className="sm:hidden">{questao.materia.nome}</span>
+          <span>✅ {acertosAteAgora}</span>
+          <span>❌ {errosAteAgora}</span>
+          {puladasAteAgora > 0 && <span>⏭️ {puladasAteAgora}</span>}
+          {historicoQuestoes.size > 0 && (
+            <span className="opacity-60">📋 {historicoQuestoes.size}/{questoes.length}</span>
+          )}
+        </div>
           <div className="flex items-center gap-2">
             {questao.assunto && (
               <span className="px-1.5 py-0.5 bg-white/20 rounded text-[10px]">{questao.assunto.nome}</span>
@@ -640,34 +640,20 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
         {/* Indicador de questão já respondida */}
         {historicoQuestoes.has(questao.id) && (() => {
-          const hist = historicoQuestoes.get(questao.id)!
-          let respostaTexto = ''
-          
-          if (hist.ultimaResposta !== null && hist.ultimaResposta !== undefined) {
-            if (questao.tipo === 'certo_errado') {
-              respostaTexto = hist.ultimaResposta === true ? 'CERTO' : 'ERRADO'
-            } else {
-              // Encontrar a letra da alternativa
-              const idx = questao.alternativas?.findIndex(a => a.id === hist.ultimaResposta)
-              if (idx !== undefined && idx >= 0) {
-                respostaTexto = `alternativa ${String.fromCharCode(97 + idx)})`
-              }
-            }
-          }
-
-          return (
-            <div className={`mb-3 px-3 py-1.5 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 ${
-              hist.acertou
-                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
-            }`}>
-              {hist.acertou ? '✅' : '❌'}
-              Já respondida ({hist.vezes}x)
-              {hist.acertou ? ' — acertou' : ' — errou'}
-              {respostaTexto && <span className="opacity-70">· Respondeu: {respostaTexto}</span>}
-            </div>
-          )
-        })()}
+        const hist = historicoQuestoes.get(questao.id)!
+        
+        return (
+          <div className={`mb-3 px-3 py-1.5 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 ${
+            hist.acertou
+              ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
+          }`}>
+            {isSimulado ? '📋' : (hist.acertou ? '✅' : '❌')}
+            Já respondida ({hist.vezes}x)
+            {!isSimulado && (hist.acertou ? ' — acertou' : ' — errou')}
+          </div>
+        )
+      })()}
 
         {/* Alerta de questão sem gabarito */}
         {questao.tipo === 'certo_errado' && (questao.resposta_certo_errado === null || questao.resposta_certo_errado === undefined) && (
@@ -704,16 +690,9 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
               const ultimaResposta = respostas[respostas.length - 1]
               const Icon = opcao.iconOk
 
-              const histCE = historicoQuestoes.get(questao.id)
-              const foiRespostaAnteriorCE = !mostrarResposta && !selecionada && histCE?.ultimaResposta === opcao.valor
-
               let estilo = 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-300'
               if (selecionada && !mostrarResposta) {
                 estilo = 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-              } else if (foiRespostaAnteriorCE) {
-                estilo = histCE.acertou
-                  ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/10'
-                  : 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10'
               } else if (mostrarResposta && selecionada) {
                 estilo = ultimaResposta?.correta
                   ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
@@ -730,11 +709,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
                 >
                   <Icon className={`h-5 w-5 ${opcao.valor ? 'text-emerald-500' : 'text-red-500'}`} />
                   {opcao.label}
-                  {foiRespostaAnteriorCE && (
-                    <span className={`text-[10px] ${histCE!.acertou ? 'text-emerald-500' : 'text-red-500'}`}>
-                      (anterior)
-                    </span>
-                  )}
                 </button>
               )
             })}
@@ -743,9 +717,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
           questao.alternativas?.map((alternativa, index) => {
             const isEliminada = alternativasEliminadas.includes(alternativa.id)
             const selecionada = respostaSelecionada === alternativa.id
-
-            const hist = historicoQuestoes.get(questao.id)
-            const foiRespostaAnterior = !mostrarResposta && !selecionada && hist?.ultimaResposta === alternativa.id
 
             let estilo = 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800'
             if (isEliminada) {
@@ -756,10 +727,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
               estilo = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
             } else if (mostrarResposta && selecionada && !alternativa.correta) {
               estilo = 'border-red-500 bg-red-50 dark:bg-red-900/20'
-            } else if (foiRespostaAnterior) {
-              estilo = hist.acertou
-                ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/10'
-                : 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10'
             }
 
             return (
@@ -778,15 +745,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
                     </span>
                     {mostrarResposta && alternativa.correta && <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />}
                     {mostrarResposta && selecionada && !alternativa.correta && <XCircle className="h-5 w-5 text-red-500 shrink-0" />}
-                    {foiRespostaAnterior && (
-                      <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                        hist!.acertou 
-                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' 
-                          : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                      }`}>
-                        {hist!.acertou ? '✅ acertou antes' : '❌ errou antes'}
-                      </span>
-                    )}
                   </div>
                 </button>
 

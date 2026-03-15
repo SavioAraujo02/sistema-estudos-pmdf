@@ -388,7 +388,7 @@ export default function LoginPage() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login?modo=trocar-senha`
+        redirectTo: `${window.location.origin}/reset-password`
       })
 
       if (error) {

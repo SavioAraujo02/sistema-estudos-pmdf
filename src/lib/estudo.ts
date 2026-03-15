@@ -15,7 +15,6 @@ export interface QuestaoEstudo {
   alternativas?: { id: string; texto: string; correta: boolean }[]
 }
 
-// ✅ INTERFACE EXPANDIDA PARA ESTATÍSTICAS COMPLETAS
 export interface EstatisticasCompletas {
   totalRespostas: number
   acertos: number
@@ -24,14 +23,12 @@ export interface EstatisticasCompletas {
   sequenciaAtual: number
   melhorSequencia: number
   tempoMedioResposta: number
-  // ✅ NOVOS CAMPOS — DADOS REAIS DO SUPABASE
   questoesHoje: number
   tempoEstudoHoje: number
   diasConsecutivos: number
   ultimaAtividade: string
 }
 
-// ✅ INTERFACE PARA ATIVIDADE RECENTE (dados reais)
 export interface AtividadeRecenteDB {
   id: string
   tipo: 'questao' | 'sessao' | 'meta'
@@ -41,18 +38,15 @@ export interface AtividadeRecenteDB {
   materia: string
 }
 
+export type StatusQuestoes = 'todas' | 'nao_respondidas' | 'erradas' | 'acertadas'
+
 export async function getQuestoesParaEstudo(
   materiaId?: string | string[],
   limite?: number,
   questaoIds?: string[],
   filtros?: {
     assuntoIds?: string[]
-    dificuldade?: string
-    anoProva?: number
-    banca?: string
-    apenasNaoRespondidas?: boolean
-    apenasErradas?: boolean
-    revisaoQuestoesDificeis?: boolean
+    statusQuestoes?: StatusQuestoes
     embaralhar?: boolean
   }
 ): Promise<QuestaoEstudo[]> {
@@ -75,9 +69,7 @@ export async function getQuestoesParaEstudo(
           resposta_certo_errado,
           imagem_url,
           imagem_nome,
-          dificuldade,
-          ano_prova,
-          banca,
+          created_at,
           materias!inner(nome),
           assuntos(id, nome, cor),
           alternativas(id, texto, correta)
@@ -100,18 +92,6 @@ export async function getQuestoesParaEstudo(
 
       if (filtros?.assuntoIds && filtros.assuntoIds.length > 0) {
         query = query.in('assunto_id', filtros.assuntoIds)
-      }
-
-      if (filtros?.dificuldade) {
-        query = query.eq('dificuldade', filtros.dificuldade)
-      }
-
-      if (filtros?.anoProva) {
-        query = query.eq('ano_prova', filtros.anoProva)
-      }
-
-      if (filtros?.banca) {
-        query = query.ilike('banca', `%${filtros.banca}%`)
       }
 
       const { data, error } = await query
@@ -150,6 +130,7 @@ export async function getQuestoesParaEstudo(
       resposta_certo_errado: item.resposta_certo_errado,
       imagem_url: item.imagem_url,
       imagem_nome: item.imagem_nome,
+      created_at: item.created_at,
       materia: { nome: item.materias?.nome || 'Sem matéria' },
       assunto: item.assuntos ? {
         id: item.assuntos.id,
@@ -159,8 +140,9 @@ export async function getQuestoesParaEstudo(
       alternativas: item.alternativas || []
     }))
 
-    // APLICAR FILTROS INTELIGENTES
-    if (filtros?.apenasNaoRespondidas || filtros?.apenasErradas || filtros?.revisaoQuestoesDificeis) {
+    // FILTRAR POR STATUS
+    const status = filtros?.statusQuestoes || 'todas'
+    if (status !== 'todas') {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
@@ -181,13 +163,12 @@ export async function getQuestoesParaEstudo(
           }
         }
 
-        const historicoMap = new Map()
+        const historicoMap = new Map<string, { acertos: number; erros: number }>()
         historicoCompleto.forEach(h => {
           if (!historicoMap.has(h.questao_id)) {
-            historicoMap.set(h.questao_id, { respostas: [], acertos: 0, erros: 0 })
+            historicoMap.set(h.questao_id, { acertos: 0, erros: 0 })
           }
-          const stats = historicoMap.get(h.questao_id)
-          stats.respostas.push(h.acertou)
+          const stats = historicoMap.get(h.questao_id)!
           if (h.acertou) stats.acertos++
           else stats.erros++
         })
@@ -195,27 +176,22 @@ export async function getQuestoesParaEstudo(
         questoesFormatadas = questoesFormatadas.filter(questao => {
           const stats = historicoMap.get(questao.id)
           
-          if (filtros.apenasNaoRespondidas) {
-            return !stats
+          switch (status) {
+            case 'nao_respondidas':
+              return !stats
+            case 'erradas':
+              return stats && stats.erros > 0
+            case 'acertadas':
+              return stats && stats.acertos > 0 && stats.erros === 0
+            default:
+              return true
           }
-          
-          if (filtros.apenasErradas) {
-            return stats && stats.erros > 0
-          }
-          
-          if (filtros.revisaoQuestoesDificeis) {
-            if (!stats) return false
-            const percentual = (stats.acertos / stats.respostas.length) * 100
-            return percentual < 70
-          }
-          
-          return true
         })
       }
     }
 
+    // ORDENAR
     let questoesFinais = questoesFormatadas
-
     if (filtros?.embaralhar) {
       questoesFinais = questoesFormatadas.sort(() => Math.random() - 0.5)
       console.log('🎲 Questões embaralhadas')
@@ -226,6 +202,7 @@ export async function getQuestoesParaEstudo(
       console.log('📚 Questões em ordem cronológica')
     }
 
+    // LIMITAR
     let resultado = questoesFinais
     if (limite && !isNaN(limite) && limite > 0 && limite < questoesFinais.length) {
       resultado = questoesFinais.slice(0, limite)
@@ -264,9 +241,11 @@ export async function salvarResposta(
       return false
     }
 
-    // Invalidar cache de matérias (estatísticas mudaram)
+    // Invalidar TODOS os caches relacionados a estatísticas
     cacheInvalidarPrefixo('materias_stats')
-
+    cacheInvalidarPrefixo('estatisticas')
+    cacheInvalidarPrefixo('filtros')
+    
     return true
   } catch (error) {
     console.error('Erro inesperado ao salvar resposta:', error)
@@ -277,25 +256,16 @@ export async function salvarResposta(
 export async function salvarTempoResposta(questaoId: string, tempoSegundos: number) {
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      console.error('Usuário não autenticado')
-      return false
-    }
+    if (!user) return false
 
     const { error } = await supabase
       .from('tempo_respostas')
-      .insert([{
-        questao_id: questaoId,
-        usuario_id: user.id,
-        tempo_segundos: tempoSegundos
-      }])
+      .insert([{ questao_id: questaoId, usuario_id: user.id, tempo_segundos: tempoSegundos }])
 
     if (error) {
       console.error('Erro ao salvar tempo de resposta:', error)
       return false
     }
-
     return true
   } catch (error) {
     console.error('Erro inesperado ao salvar tempo:', error)
@@ -310,19 +280,11 @@ export async function salvarRespostaCompleta(
 ) {
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      console.error('Usuário não autenticado')
-      return false
-    }
+    if (!user) return false
 
     const { error: historicoError } = await supabase
       .from('historico_estudos')
-      .insert([{
-        questao_id: questaoId,
-        usuario_id: user.id,
-        acertou
-      }])
+      .insert([{ questao_id: questaoId, usuario_id: user.id, acertou }])
 
     if (historicoError) {
       console.error('Erro ao salvar resposta:', historicoError)
@@ -332,7 +294,6 @@ export async function salvarRespostaCompleta(
     if (tempoSegundos && tempoSegundos > 0) {
       await salvarTempoResposta(questaoId, tempoSegundos)
     }
-
     return true
   } catch (error) {
     console.error('Erro inesperado ao salvar resposta completa:', error)
@@ -340,7 +301,93 @@ export async function salvarRespostaCompleta(
   }
 }
 
-// ✅ FUNÇÃO EXPANDIDA — AGORA COM questoesHoje, diasConsecutivos, ultimaAtividade DO SUPABASE
+export async function getEstatisticasFiltros(materiaIds?: string | string[], assuntoIds?: string[]): Promise<{
+  totalQuestoes: number
+  naoRespondidas: number
+  comErros: number
+  acertadas: number
+}> {
+  const { comCache } = await import('./cache')
+  
+  // Criar chave única baseada nos parâmetros
+  const chaveCache = `filtros_${JSON.stringify({ materiaIds, assuntoIds })}`
+  
+  return comCache(chaveCache, async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { totalQuestoes: 0, naoRespondidas: 0, comErros: 0, acertadas: 0 }
+
+      let queryTotal = supabase
+        .from('questoes')
+        .select('id', { count: 'exact' })
+
+      if (materiaIds) {
+        if (Array.isArray(materiaIds)) {
+          if (materiaIds.length > 0) queryTotal = queryTotal.in('materia_id', materiaIds)
+        } else {
+          queryTotal = queryTotal.eq('materia_id', materiaIds)
+        }
+      }
+
+      if (assuntoIds && assuntoIds.length > 0) {
+        queryTotal = queryTotal.in('assunto_id', assuntoIds)
+      }
+
+      const { count: totalQuestoes } = await queryTotal
+
+      // Buscar histórico do usuário
+      let queryHistorico = supabase
+        .from('historico_respostas_detalhado')
+        .select('questao_id, acertou, questoes!inner(materia_id, assunto_id)')
+        .eq('usuario_id', user.id)
+
+      if (materiaIds) {
+        if (Array.isArray(materiaIds)) {
+          if (materiaIds.length > 0) queryHistorico = queryHistorico.in('questoes.materia_id', materiaIds)
+        } else {
+          queryHistorico = queryHistorico.eq('questoes.materia_id', materiaIds)
+        }
+      }
+
+      if (assuntoIds && assuntoIds.length > 0) {
+        queryHistorico = queryHistorico.in('questoes.assunto_id', assuntoIds)
+      }
+
+      const { data: historico } = await queryHistorico
+
+      const questoesRespondidas = new Map<string, { acertos: number; erros: number }>()
+
+      historico?.forEach((resposta: any) => {
+        const qid = resposta.questao_id
+        if (!questoesRespondidas.has(qid)) {
+          questoesRespondidas.set(qid, { acertos: 0, erros: 0 })
+        }
+        const stats = questoesRespondidas.get(qid)!
+        if (resposta.acertou) stats.acertos++
+        else stats.erros++
+      })
+
+      let comErros = 0
+      let acertadas = 0
+      questoesRespondidas.forEach(stats => {
+        if (stats.erros > 0) comErros++
+        else if (stats.acertos > 0) acertadas++
+      })
+
+      return {
+        totalQuestoes: totalQuestoes || 0,
+        naoRespondidas: (totalQuestoes || 0) - questoesRespondidas.size,
+        comErros,
+        acertadas
+      }
+    } catch (error) {
+      console.error('Erro ao calcular estatísticas dos filtros:', error)
+      return { totalQuestoes: 0, naoRespondidas: 0, comErros: 0, acertadas: 0 }
+    }
+  }, 2 * 60 * 1000) // Cache de 2 minutos
+}
+
+// Estatísticas completas do dashboard
 export async function getEstatisticasEstudo(): Promise<EstatisticasCompletas> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -354,34 +401,20 @@ export async function getEstatisticasEstudo(): Promise<EstatisticasCompletas> {
       }
     }
 
-    console.log('📊 Buscando estatísticas completas para usuário:', user.id)
-
-    // Início do dia atual (UTC-3 para Brasília)
     const agora = new Date()
     const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate())
     const inicioHojeISO = inicioHoje.toISOString()
 
     const [historicoData, tempoData, tempoHojeData] = await Promise.all([
-      // Histórico completo com datas
       supabase
         .from('historico_estudos')
-        .select(`
-          acertou,
-          data_resposta,
-          questoes!inner(
-            materias!inner(nome)
-          )
-        `)
+        .select('acertou, data_resposta, questoes!inner(materias!inner(nome))')
         .eq('usuario_id', user.id)
         .order('data_resposta', { ascending: true }),
-      
-      // Tempos de resposta (todos)
       supabase
         .from('tempo_respostas')
         .select('tempo_segundos')
         .eq('usuario_id', user.id),
-
-      // Tempos de resposta de HOJE
       supabase
         .from('tempo_respostas')
         .select('tempo_segundos')
@@ -397,20 +430,15 @@ export async function getEstatisticasEstudo(): Promise<EstatisticasCompletas> {
     const acertos = historico?.filter(r => r.acertou).length || 0
     const percentualAcertos = totalRespostas > 0 ? Math.round((acertos / totalRespostas) * 100) : 0
 
-    // ✅ CALCULAR SEQUÊNCIAS
     let sequenciaAtual = 0
     let melhorSequencia = 0
     let sequenciaTemp = 0
 
     if (historico && historico.length > 0) {
       for (let i = historico.length - 1; i >= 0; i--) {
-        if (historico[i].acertou) {
-          sequenciaAtual++
-        } else {
-          break
-        }
+        if (historico[i].acertou) sequenciaAtual++
+        else break
       }
-
       for (const resposta of historico) {
         if (resposta.acertou) {
           sequenciaTemp++
@@ -421,102 +449,73 @@ export async function getEstatisticasEstudo(): Promise<EstatisticasCompletas> {
       }
     }
 
-    // ✅ CALCULAR TEMPO MÉDIO
     let tempoMedioResposta = 0
     if (tempos && tempos.length > 0) {
       const tempoTotal = tempos.reduce((sum, t) => sum + (t.tempo_segundos || 0), 0)
       tempoMedioResposta = Math.round(tempoTotal / tempos.length)
     }
 
-    // ✅ NOVO: QUESTÕES RESPONDIDAS HOJE (do Supabase!)
     let questoesHoje = 0
     if (historico) {
-      questoesHoje = historico.filter(r => {
-        const dataResp = new Date(r.data_resposta)
-        return dataResp >= inicioHoje
-      }).length
+      questoesHoje = historico.filter(r => new Date(r.data_resposta) >= inicioHoje).length
     }
 
-    // ✅ NOVO: TEMPO DE ESTUDO HOJE (do Supabase!)
     let tempoEstudoHoje = 0
     if (temposHoje && temposHoje.length > 0) {
       tempoEstudoHoje = temposHoje.reduce((sum, t) => sum + (t.tempo_segundos || 0), 0)
     }
 
-    // ✅ NOVO: ÚLTIMA ATIVIDADE (do Supabase!)
     let ultimaAtividade = new Date().toISOString()
     if (historico && historico.length > 0) {
       ultimaAtividade = historico[historico.length - 1].data_resposta
     }
 
-    // ✅ NOVO: DIAS CONSECUTIVOS (do Supabase!)
     let diasConsecutivos = 0
     if (historico && historico.length > 0) {
-      // Pegar datas únicas de estudo (só o dia, sem hora)
       const datasUnicas = [...new Set(
         historico.map(r => {
           const d = new Date(r.data_resposta)
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         })
-      )].sort().reverse() // Ordenar do mais recente ao mais antigo
+      )].sort().reverse()
 
       if (datasUnicas.length > 0) {
         const hoje = new Date()
         const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
-        
         const ontem = new Date(hoje)
         ontem.setDate(ontem.getDate() - 1)
         const ontemStr = `${ontem.getFullYear()}-${String(ontem.getMonth() + 1).padStart(2, '0')}-${String(ontem.getDate()).padStart(2, '0')}`
 
-        // A sequência só conta se estudou hoje ou ontem
         if (datasUnicas[0] === hojeStr || datasUnicas[0] === ontemStr) {
           diasConsecutivos = 1
-          
           for (let i = 1; i < datasUnicas.length; i++) {
             const dataAtual = new Date(datasUnicas[i - 1])
             const dataAnterior = new Date(datasUnicas[i])
             const diffDias = Math.round((dataAtual.getTime() - dataAnterior.getTime()) / (1000 * 60 * 60 * 24))
-            
-            if (diffDias === 1) {
-              diasConsecutivos++
-            } else {
-              break
-            }
+            if (diffDias === 1) diasConsecutivos++
+            else break
           }
         }
       }
     }
 
-    // ✅ AGRUPAR POR MATÉRIA
     const porMateria: Record<string, { total: number; acertos: number; percentual: number }> = {}
-    
     historico?.forEach((resposta: any) => {
       const nomeMateria = resposta.questoes?.materias?.nome || 'Sem matéria'
-      
-      if (!porMateria[nomeMateria]) {
-        porMateria[nomeMateria] = { total: 0, acertos: 0, percentual: 0 }
-      }
-      
+      if (!porMateria[nomeMateria]) porMateria[nomeMateria] = { total: 0, acertos: 0, percentual: 0 }
       porMateria[nomeMateria].total++
-      if (resposta.acertou) {
-        porMateria[nomeMateria].acertos++
-      }
+      if (resposta.acertou) porMateria[nomeMateria].acertos++
     })
-
     Object.keys(porMateria).forEach(materia => {
       const stats = porMateria[materia]
       stats.percentual = Math.round((stats.acertos / stats.total) * 100)
     })
 
-    const resultado = {
+    return {
       totalRespostas, acertos, percentualAcertos, porMateria,
       sequenciaAtual, melhorSequencia, tempoMedioResposta,
       questoesHoje, tempoEstudoHoje, diasConsecutivos, ultimaAtividade
     }
-
-    console.log('✅ Estatísticas completas:', resultado)
-    return resultado
-
   } catch (error) {
     console.error('Erro inesperado ao buscar estatísticas:', error)
     return {
@@ -528,7 +527,6 @@ export async function getEstatisticasEstudo(): Promise<EstatisticasCompletas> {
   }
 }
 
-// ✅ NOVA FUNÇÃO: Buscar atividade recente DO SUPABASE
 export async function getAtividadeRecente(): Promise<AtividadeRecenteDB[]> {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -536,30 +534,19 @@ export async function getAtividadeRecente(): Promise<AtividadeRecenteDB[]> {
 
     const { data, error } = await supabase
       .from('historico_estudos')
-      .select(`
-        id,
-        acertou,
-        data_resposta,
-        questoes!inner(
-          enunciado,
-          materias!inner(nome)
-        )
-      `)
+      .select('id, acertou, data_resposta, questoes!inner(enunciado, materias!inner(nome))')
       .eq('usuario_id', user.id)
       .order('data_resposta', { ascending: false })
       .limit(8)
 
-    if (error || !data) {
-      console.error('Erro ao buscar atividade recente:', error)
-      return []
-    }
+    if (error || !data) return []
 
     return data.map((item: any) => ({
       id: item.id,
       tipo: 'questao' as const,
-      descricao: item.questoes?.enunciado 
-        ? (item.questoes.enunciado.length > 60 
-            ? item.questoes.enunciado.substring(0, 60) + '...' 
+      descricao: item.questoes?.enunciado
+        ? (item.questoes.enunciado.length > 60
+            ? item.questoes.enunciado.substring(0, 60) + '...'
             : item.questoes.enunciado)
         : 'Questão respondida',
       timestamp: item.data_resposta,
@@ -575,45 +562,21 @@ export async function getAtividadeRecente(): Promise<AtividadeRecenteDB[]> {
 export async function zerarEstatisticasUsuario() {
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      console.error('Usuário não autenticado')
-      return false
-    }
-
-    console.log('🗑️ Iniciando limpeza de estatísticas para usuário:', user.id)
+    if (!user) return false
 
     const promises = [
-      supabase
-        .from('historico_estudos')
-        .delete()
-        .eq('usuario_id', user.id),
-      
-      supabase
-        .from('tempo_respostas')
-        .delete()
-        .eq('usuario_id', user.id),
-      
-      supabase
-        .from('alternativas_eliminadas')
-        .delete()
-        .eq('usuario_id', user.id),
-      
-      supabase
-        .from('historico_respostas_detalhado')
-        .delete()
-        .eq('usuario_id', user.id)
+      supabase.from('historico_estudos').delete().eq('usuario_id', user.id),
+      supabase.from('tempo_respostas').delete().eq('usuario_id', user.id),
+      supabase.from('alternativas_eliminadas').delete().eq('usuario_id', user.id),
+      supabase.from('historico_respostas_detalhado').delete().eq('usuario_id', user.id)
     ]
 
     const resultados = await Promise.allSettled(promises)
-    
     const erros = resultados.filter(r => r.status === 'rejected')
     if (erros.length > 0) {
       console.error('Alguns erros ao zerar estatísticas:', erros)
       return false
     }
-
-    console.log(`✅ Tabelas limpas com sucesso!`)
     return true
   } catch (error) {
     console.error('Erro inesperado ao zerar estatísticas:', error)
@@ -621,119 +584,20 @@ export async function zerarEstatisticasUsuario() {
   }
 }
 
-export async function getEstatisticasFiltros(materiaIds?: string | string[]): Promise<{
-  totalQuestoes: number
-  naoRespondidas: number
-  comErros: number
-  dificeis: number
-}> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      return { totalQuestoes: 0, naoRespondidas: 0, comErros: 0, dificeis: 0 }
-    }
-
-    let queryTotal = supabase
-      .from('questoes')
-      .select('id', { count: 'exact' })
-
-    if (materiaIds) {
-      if (Array.isArray(materiaIds)) {
-        if (materiaIds.length > 0) {
-          queryTotal = queryTotal.in('materia_id', materiaIds)
-        }
-      } else {
-        queryTotal = queryTotal.eq('materia_id', materiaIds)
-      }
-    }
-
-    const { count: totalQuestoes } = await queryTotal
-
-    let queryHistorico = supabase
-      .from('historico_respostas_detalhado')
-      .select(`
-        questao_id,
-        acertou,
-        questoes!inner(materia_id)
-      `)
-      .eq('usuario_id', user.id)
-
-    if (materiaIds) {
-      if (Array.isArray(materiaIds)) {
-        if (materiaIds.length > 0) {
-          queryHistorico = queryHistorico.in('questoes.materia_id', materiaIds)
-        }
-      } else {
-        queryHistorico = queryHistorico.eq('questoes.materia_id', materiaIds)
-      }
-    }
-
-    const { data: historico } = await queryHistorico
-
-    const questoesRespondidas = new Set()
-    const questoesComErros = new Set()
-    const estatisticasPorQuestao = new Map()
-
-    historico?.forEach((resposta: any) => {
-      const questaoId = resposta.questao_id
-      questoesRespondidas.add(questaoId)
-
-      if (!resposta.acertou) {
-        questoesComErros.add(questaoId)
-      }
-
-      if (!estatisticasPorQuestao.has(questaoId)) {
-        estatisticasPorQuestao.set(questaoId, { acertos: 0, total: 0 })
-      }
-      const stats = estatisticasPorQuestao.get(questaoId)
-      stats.total++
-      if (resposta.acertou) stats.acertos++
-    })
-
-    let questoesDificeis = 0
-    estatisticasPorQuestao.forEach(stats => {
-      const percentual = (stats.acertos / stats.total) * 100
-      if (percentual < 70) {
-        questoesDificeis++
-      }
-    })
-
-    return {
-      totalQuestoes: totalQuestoes || 0,
-      naoRespondidas: (totalQuestoes || 0) - questoesRespondidas.size,
-      comErros: questoesComErros.size,
-      dificeis: questoesDificeis
-    }
-
-  } catch (error) {
-    console.error('Erro ao calcular estatísticas dos filtros:', error)
-    return { totalQuestoes: 0, naoRespondidas: 0, comErros: 0, dificeis: 0 }
-  }
-}
-
-// ✅ Manter funções de gamificação local (usadas pelo ModoEstudo)
+// Funções de gamificação local
 export async function atualizarSequenciaAtual(acertou: boolean) {
   try {
     const sequenciaAtual = parseInt(localStorage.getItem('sequencia_atual') || '0')
     const melhorSequencia = parseInt(localStorage.getItem('melhor_sequencia') || '0')
-    
     if (acertou) {
       const novaSequencia = sequenciaAtual + 1
       localStorage.setItem('sequencia_atual', novaSequencia.toString())
-      
-      if (novaSequencia > melhorSequencia) {
-        localStorage.setItem('melhor_sequencia', novaSequencia.toString())
-      }
+      if (novaSequencia > melhorSequencia) localStorage.setItem('melhor_sequencia', novaSequencia.toString())
     } else {
       localStorage.setItem('sequencia_atual', '0')
     }
-    
     return true
-  } catch (error) {
-    console.error('Erro ao atualizar sequência:', error)
-    return false
-  }
+  } catch (error) { return false }
 }
 
 export async function adicionarAtividadeRecente(atividade: {
@@ -744,71 +608,29 @@ export async function adicionarAtividadeRecente(atividade: {
 }) {
   try {
     const atividadesExistentes = JSON.parse(localStorage.getItem('atividade_recente') || '[]')
-    
-    const novaAtividade = {
-      id: Date.now().toString(),
-      ...atividade,
-      timestamp: new Date().toISOString()
-    }
-    
+    const novaAtividade = { id: Date.now().toString(), ...atividade, timestamp: new Date().toISOString() }
     const atividadesAtualizadas = [novaAtividade, ...atividadesExistentes].slice(0, 10)
-    
     localStorage.setItem('atividade_recente', JSON.stringify(atividadesAtualizadas))
-    localStorage.setItem('ultima_atividade', new Date().toISOString())
-    
     return true
-  } catch (error) {
-    console.error('Erro ao adicionar atividade recente:', error)
-    return false
-  }
+  } catch (error) { return false }
 }
 
 export async function atualizarContadorDiario() {
   try {
     const hoje = new Date().toDateString()
     const questoesHoje = parseInt(localStorage.getItem(`questoes_hoje_${hoje}`) || '0')
-    
     localStorage.setItem(`questoes_hoje_${hoje}`, (questoesHoje + 1).toString())
-    
-    const ontem = new Date()
-    ontem.setDate(ontem.getDate() - 1)
-    const questoesOntem = parseInt(localStorage.getItem(`questoes_hoje_${ontem.toDateString()}`) || '0')
-    
-    let diasConsecutivos = parseInt(localStorage.getItem('dias_consecutivos') || '0')
-    
-    if (questoesHoje === 0) {
-      if (questoesOntem > 0) {
-        diasConsecutivos += 1
-      } else {
-        diasConsecutivos = 1
-      }
-      localStorage.setItem('dias_consecutivos', diasConsecutivos.toString())
-    }
-    
     return true
-  } catch (error) {
-    console.error('Erro ao atualizar contador diário:', error)
-    return false
-  }
+  } catch (error) { return false }
 }
 
 export async function salvarRespostaComGamificacao(
-  questaoId: string,
-  acertou: boolean,
-  tempoSegundos?: number,
-  materiaId?: string,
-  nomeMateria?: string
+  questaoId: string, acertou: boolean, tempoSegundos?: number,
+  materiaId?: string, nomeMateria?: string
 ) {
   try {
-    console.log('🎮 Salvando resposta com gamificação:', { questaoId, acertou, tempoSegundos })
-    
     const sucessoBanco = await salvarRespostaCompleta(questaoId, acertou, tempoSegundos)
-    
-    if (!sucessoBanco) {
-      console.error('Falha ao salvar no banco')
-      return false
-    }
-    
+    if (!sucessoBanco) return false
     await Promise.all([
       atualizarSequenciaAtual(acertou),
       atualizarContadorDiario(),
@@ -819,57 +641,30 @@ export async function salvarRespostaComGamificacao(
         materia: nomeMateria
       })
     ])
-    
-    console.log('✅ Resposta salva com gamificação completa')
     return true
-    
-  } catch (error) {
-    console.error('Erro ao salvar resposta com gamificação:', error)
-    return false
-  }
+  } catch (error) { return false }
 }
 
 export async function verificarConquistasDesbloqueadas() {
   try {
     const stats = await getEstatisticasEstudo()
     const conquistasDesbloqueadas = []
-    
-    if (stats.totalRespostas === 1) {
-      conquistasDesbloqueadas.push({ id: 'primeira_questao', nome: 'Primeiro Passo', icone: '🎯' })
-    }
-    if (stats.totalRespostas === 10) {
-      conquistasDesbloqueadas.push({ id: 'dez_questoes', nome: 'Iniciante', icone: '📚' })
-    }
-    if (stats.totalRespostas === 50) {
-      conquistasDesbloqueadas.push({ id: 'cinquenta_questoes', nome: 'Estudioso', icone: '📖' })
-    }
-    if (stats.totalRespostas === 100) {
-      conquistasDesbloqueadas.push({ id: 'cem_questoes', nome: 'Centurião', icone: '💯' })
-    }
-    if (stats.sequenciaAtual === 5) {
-      conquistasDesbloqueadas.push({ id: 'sequencia_cinco', nome: 'Aquecendo', icone: '🔥' })
-    }
-    if (stats.melhorSequencia === 10) {
-      conquistasDesbloqueadas.push({ id: 'sequencia_dez', nome: 'Em Chamas', icone: '🔥' })
-    }
-    
+    if (stats.totalRespostas === 1) conquistasDesbloqueadas.push({ id: 'primeira_questao', nome: 'Primeiro Passo', icone: '🎯' })
+    if (stats.totalRespostas === 10) conquistasDesbloqueadas.push({ id: 'dez_questoes', nome: 'Iniciante', icone: '📚' })
+    if (stats.totalRespostas === 50) conquistasDesbloqueadas.push({ id: 'cinquenta_questoes', nome: 'Estudioso', icone: '📖' })
+    if (stats.totalRespostas === 100) conquistasDesbloqueadas.push({ id: 'cem_questoes', nome: 'Centurião', icone: '💯' })
+    if (stats.sequenciaAtual === 5) conquistasDesbloqueadas.push({ id: 'sequencia_cinco', nome: 'Aquecendo', icone: '🔥' })
+    if (stats.melhorSequencia === 10) conquistasDesbloqueadas.push({ id: 'sequencia_dez', nome: 'Em Chamas', icone: '🔥' })
     if (conquistasDesbloqueadas.length > 0) {
       const conquistasExistentes = JSON.parse(localStorage.getItem('conquistas_desbloqueadas') || '[]')
-      const novasConquistas = conquistasDesbloqueadas.filter(nova => 
+      const novasConquistas = conquistasDesbloqueadas.filter(nova =>
         !conquistasExistentes.some((existente: any) => existente.id === nova.id)
       )
-      
       if (novasConquistas.length > 0) {
-        localStorage.setItem('conquistas_desbloqueadas', 
-          JSON.stringify([...conquistasExistentes, ...novasConquistas])
-        )
+        localStorage.setItem('conquistas_desbloqueadas', JSON.stringify([...conquistasExistentes, ...novasConquistas]))
         return novasConquistas
       }
     }
-    
     return []
-  } catch (error) {
-    console.error('Erro ao verificar conquistas:', error)
-    return []
-  }
+  } catch (error) { return [] }
 }

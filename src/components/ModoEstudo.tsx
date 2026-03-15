@@ -196,7 +196,6 @@ export function ModoEstudo({ questoes, onFinalizar, configuracao, isAdmin }: Mod
                 if (vezesSimplesAteMomento >= vezesDetalhado) {
                   existing.vezes++
                 }
-                if (h.acertou) existing.acertou = true
               } else {
                 mapa.set(h.questao_id, { acertou: h.acertou, vezes: 1, ultimaResposta: null })
               }
